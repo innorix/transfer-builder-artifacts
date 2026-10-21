@@ -164,7 +164,7 @@ INNORIX_BASE_URL=https://app.innorix.com
 
 An API key can also be created through `POST /api/auth/api-keys`. This request requires a Bearer access token and no request body; the generated key is returned as `data.apiKey`.
 
-For more information, see the [INNORIX Developer Center](https://innorix.com/en/developers), [Quick Start](https://innorix.com/en/developer#dev-api-quick), and [API Reference](https://innorix.com/en/developer/api).
+For more information, see the [INNORIX Developer Center](https://innorix.com/en/developers), [Quick Start](https://innorix.com/en/developers#irxApiQuick), and [API Reference](https://innorix.com/en/docs/api).
 
 ### Protect Credentials and Logs
 
@@ -217,7 +217,7 @@ After execution:
 1. Review the terminal output for configuration errors, API errors, and the operation or transfer status.
 2. Open the INNORIX Platform and check the relevant automation or transfer status.
 3. For file transfers, confirm that the expected files arrived at the configured destination.
-4. For scheduled, recurring, chained, synchronization, or external-trigger scenarios, verify the configuration and execution status appropriate to that scenario rather than expecting an immediate file transfer.
+4. For scheduled, recurring, chained, or external-trigger scenarios, verify the configuration and execution status appropriate to that scenario rather than expecting an immediate file transfer.
 5. If an integration is enabled, verify its own configuration and outcome as well as the transfer result.
 
 The expected output depends on the example, its configuration, and the execution condition. Refer to the builder-specific README for scenario-specific expectations.
@@ -243,7 +243,7 @@ For scenario-specific configuration, consult the selected builder's README and `
 
 - [INNORIX Platform](https://innorix.com/en/)
 - [INNORIX Developer Center](https://innorix.com/en/developers)
-- [Quick Start](https://innorix.com/en/developer#dev-api-quick)
-- [Examples](https://innorix.com/en/developer/example)
-- [API Reference](https://innorix.com/en/developer/api)
-- [Transfer Builder](https://innorix.com/en/)
+- [Quick Start](https://innorix.com/en/developers#irxApiQuick)
+- [Examples](https://innorix.com/en/docs/examples)
+- [API Reference](https://innorix.com/en/docs/api)
+- [Transfer Builder](https://innorix.com/en/developers#irxBuilder)

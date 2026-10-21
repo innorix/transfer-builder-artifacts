@@ -219,16 +219,18 @@ java ComboBuilder.java path/to/other.env
 You can also compile the source file first. Run these commands in order:
 
 ```bash
-javac ComboBuilder.java
+javac -encoding UTF-8 ComboBuilder.java
 java ComboBuilder
 ```
 
 On Windows PowerShell, run the same commands on separate lines:
 
 ```powershell
-javac ComboBuilder.java
+javac -encoding UTF-8 ComboBuilder.java
 java ComboBuilder
 ```
+
+Always pass `-encoding UTF-8`. The source file is UTF-8, and on JDK 11 to 17 `javac` otherwise uses the system locale (for example Korean, Japanese or Chinese Windows) and stops with `unmappable character for encoding` errors. JDK 18 and later default to UTF-8, where the option is harmless.
 
 To use a different configuration file with the compiled program:
 
@@ -246,7 +248,7 @@ After running the program:
 2. For an immediate run, wait for the final transfer status if `WAIT=true`.
 3. Open the INNORIX Platform and check the operation or automation status.
 4. For file transfers, confirm that the expected files arrived at the configured destination.
-5. For scheduled, recurring, chained, external-trigger, or sync operations, verify the created automation and its settings. These modes may not transfer files immediately.
+5. For scheduled, recurring, chained, or external-trigger operations, verify the created automation and its settings. These modes may not transfer files immediately.
 
 The expected result depends on the selected builder and the settings in `.env`.
 
@@ -255,6 +257,7 @@ The expected result depends on the selected builder and the settings in `.env`.
 | Symptom | What to check |
 |---|---|
 | `java` or `javac` is not recognized | Install a Java 11+ JDK and confirm that its `bin` directory is on `PATH`. |
+| `error: unmappable character (0x…) for encoding …` | Compile with `javac -encoding UTF-8 ComboBuilder.java`, or run the source directly with `java ComboBuilder.java`. |
 | The `.env` file is not found | Run the command from the Java example directory, check the file name, or provide the correct path as the first argument. |
 | Authentication fails | Check the selected authentication method, API key or token, and Workspace ID. |
 | The source or destination cannot be accessed | Verify device IDs, paths on the registered devices, and device connection status. |
@@ -269,7 +272,7 @@ For scenario-specific settings, consult the `.env.builder.example` file and the 
 
 - [INNORIX Platform](https://innorix.com/en/)
 - [INNORIX Developer Center](https://innorix.com/en/developers)
-- [Quick Start](https://innorix.com/en/developer#dev-api-quick)
-- [Examples](https://innorix.com/en/developer/example)
-- [API Reference](https://innorix.com/en/developer/api)
-- [Transfer Builder](https://innorix.com/en/)
+- [Quick Start](https://innorix.com/en/developers#irxApiQuick)
+- [Examples](https://innorix.com/en/docs/examples)
+- [API Reference](https://innorix.com/en/docs/api)
+- [Transfer Builder](https://innorix.com/en/developers#irxBuilder)

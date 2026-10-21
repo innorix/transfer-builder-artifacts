@@ -38,7 +38,7 @@ Make sure the version is 18 or later.
 
 Node.js's built-in `fetch` does not automatically use `HTTP_PROXY` or `HTTPS_PROXY` environment variables in all supported versions. If your environment requires an HTTP proxy, use the supported proxy configuration for your Node.js version.
 
-For Node.js versions that support `NODE_USE_ENV_PROXY` (Node.js 22+ according to this example's current requirements), run:
+`NODE_USE_ENV_PROXY` is available in Node.js 24.0 and later, and in 22.21 and later. Check with `node --version`. On a supported version, run:
 
 **macOS / Linux**
 
@@ -52,6 +52,8 @@ NODE_USE_ENV_PROXY=1 node combo_builder.js
 $env:NODE_USE_ENV_PROXY = "1"
 node combo_builder.js
 ```
+
+On Node.js 18.0 to 22.20 this variable has no effect and the script cannot reach the API through a proxy; upgrade Node.js in that case.
 
 If you do not use a proxy, you can skip this section.
 
@@ -204,7 +206,7 @@ INNORIX_BASE_URL=https://app.innorix.com
 
 An API key can also be created through `POST /api/auth/api-keys`. This request requires a Bearer access token and no request body; the generated key is returned as `data.apiKey`.
 
-For more information, see the [INNORIX Developer Center](https://innorix.com/en/developers), [Quick Start](https://innorix.com/en/developer#dev-api-quick), and [API Reference](https://innorix.com/en/developer/api).
+For more information, see the [INNORIX Developer Center](https://innorix.com/en/developers), [Quick Start](https://innorix.com/en/developers#irxApiQuick), and [API Reference](https://innorix.com/en/docs/api).
 
 ### Protect Credentials and Logs
 
@@ -241,7 +243,7 @@ After execution:
 1. Review the terminal output for configuration errors, API errors, and the operation or transfer status.
 2. Open the INNORIX Platform and check the relevant automation or transfer status.
 3. For file transfers, confirm that the expected files arrived at the configured destination.
-4. For scheduled, recurring, chained, synchronization, or external-trigger scenarios, verify the configuration and execution status appropriate to that scenario rather than expecting an immediate file transfer.
+4. For scheduled, recurring, chained, or external-trigger scenarios, verify the configuration and execution status appropriate to that scenario rather than expecting an immediate file transfer.
 5. If an integration is enabled, verify its own configuration and outcome as well as the transfer result.
 
 The expected output depends on the example, its configuration, and the execution condition. Refer to the builder-specific README for scenario-specific expectations.
@@ -266,7 +268,7 @@ For scenario-specific configuration, consult the selected builder's README and `
 
 - [INNORIX Platform](https://innorix.com/en/)
 - [INNORIX Developer Center](https://innorix.com/en/developers)
-- [Quick Start](https://innorix.com/en/developer#dev-api-quick)
-- [Examples](https://innorix.com/en/developer/example)
-- [API Reference](https://innorix.com/en/developer/api)
-- [Transfer Builder](https://innorix.com/en/)
+- [Quick Start](https://innorix.com/en/developers#irxApiQuick)
+- [Examples](https://innorix.com/en/docs/examples)
+- [API Reference](https://innorix.com/en/docs/api)
+- [Transfer Builder](https://innorix.com/en/developers#irxBuilder)

@@ -3,9 +3,9 @@
 > Builder page: <https://innorix.com/en/builder/send-matching-one-now-follow-up>
 > Pattern: **Send to one** · **Matching files only** · **Right now** · **Follow-up actions**
 
-Run it once, and the files in a folder on one device (the **source**) are sent to a folder on another device (the **target**) immediately. Only files that pass your filter are sent (for example, everything except `.exe`, `.msi` and `.bat`). Around the transfer, the follow-up actions you picked run automatically: a virus scan before the files leave the source, and a Slack message when the transfer starts.
+Run it once, and the files in a folder on one device (the **source**) are sent to a folder on another device (the **target**) immediately. The script waits until the transfer finishes and prints the result. Only files that pass your filter are included (for example, everything except `.exe`, `.msi` and `.bat`). Around the transfer, the follow-up actions you picked run automatically: a Microsoft Defender virus scan before the files leave the source, and a Slack message when the transfer starts, completes or fails.
 
-You do not write any code. The script in each language folder is fixed; everything you chose in the Builder lives in one `.env` file next to it.
+You do not write any code. The script in each language folder is written for this pattern; everything you need to supply lives in one `.env` file next to it.
 
 ---
 
@@ -13,14 +13,14 @@ You do not write any code. The script in each language folder is fixed; everythi
 
 | Builder choice | This example | In `.env` |
 |---|---|---|
-| Transfer type | One source device → one target device | `TRANSFER_TYPE=send_one` |
-| Files | Only files matching the filter (type / size / name) | `FILTER_EXT`, `FILTER_MODE`, … |
-| Start | Immediately when you run the script, then wait for the result | `START_WHEN=now`, `WAIT=true` |
-| After transfer | Virus scan + message (you can add monitoring, email, run API) | `ON_VIRUS_SCAN`, `ON_MESSAGE`, … |
+| Transfer type | One source device → one target device | `SOURCE_ID`, `SOURCE_PATH` → `TARGET_ID`, `TARGET_PATH` |
+| Files | Only files matching the type and size filter | `FILTER_EXT`, `FILTER_MODE`, `FILTER_MIN_MB`, `FILTER_MAX_MB` |
+| Start | Immediately when you run the script, then wait for the result | `WAIT`, `WAIT_TIMEOUT`, `APPEAR_WAIT` |
+| After transfer | Virus scan and Slack message are on; email, monitoring and run-API can be added | `ON_VIRUS_SCAN`, `ON_MESSAGE` (on), `ON_EMAIL`, `ON_MONITORING`, `ON_RUN_API` |
 
-Under the hood the script calls the INNORIX Public API: it creates the follow-up integrations (`POST /api/integrations`), creates one automation that runs right away (`POST /api/automations`), then polls the transfer (`GET /api/transfers/{id}`) until it finishes and prints the result. You never need to call these yourself.
+The script in this folder is written for exactly this pattern, so there is nothing to choose in the code: it reads `.env`, signs in to the INNORIX Public API, creates the follow-up integrations (`POST /api/integrations`), then creates one automation that runs right away (`POST /api/automations`) and polls the transfer (`GET /api/transfers/{id}`) until it finishes.
 
-If you only want *some* of this, there is a simpler example — see [Related examples](#related-examples).
+If you want more or less than this, a neighbouring example is one option away. See [Related examples](#related-examples).
 
 ---
 
@@ -29,13 +29,13 @@ If you only want *some* of this, there is a simpler example — see [Related exa
 Tick these off first. Everything below is done in the INNORIX Platform console (<https://app.innorix.com>), not in code.
 
 1. **An INNORIX Platform account.** Sign up for free at <https://innorix.com/en/> if you do not have one.
-2. **Your API key.** In the console, open the profile menu at the bottom-left → **Developer** → copy the **API Key**. The same dialog shows your **Workspace ID**; copy that too.
+2. **Your API key.** In the console, open the profile menu at the bottom-left → **Developer** → copy the **API Key**. The same dialog shows your **Workspace ID**.
 3. **Two connected devices.** Go to **Devices → Connect Device** and connect the machine that has the files (source) and the machine that should receive them (target). A PC or server needs the INNORIX Agent installed; object storage (S3, Azure Blob, …) is connected with its own credentials. Both devices must show as **online**.
 4. **The two device IDs.** In **Devices**, select a device; its ID is at the top-right. You need one for the source and one for the target.
 5. **A source folder with a few test files** on the source device, and a **target folder path** on the target device (it is created if it does not exist).
 6. **For the follow-up actions:**
    - **Message (Slack):** a Slack *Incoming Webhook* URL for the channel that should get the message.
-   - **Virus scan (McAfee ENS by default):** the scanner's connection details. The script tells you exactly which fields are missing when you run it (see [What you should see](#what-you-should-see)).
+   - **Virus scan:** Microsoft Defender on the source device. Other scanners are accepted by the API but do not scan yet, so keep `VIRUS_SCAN_TYPE=microsoft_defender`.
 7. **One runtime**, whichever language you prefer:
 
    | Language | Needs |
@@ -53,8 +53,8 @@ Tick these off first. Everything below is done in the INNORIX Platform console (
 send-matching-one-now-follow-up/
 ├── README.md                 ← you are here
 ├── python/
-│   ├── combo_builder.py      ← the script (do not edit)
-│   ├── .env                  ← generated by the Builder; fill in the blanks
+│   ├── combo_builder.py      ← the script, written for this pattern (do not edit)
+│   ├── .env                  ← this pattern's settings; fill in the blanks
 │   ├── .env.builder.example  ← every key explained, for reference
 │   └── README.md             ← Python-specific notes
 ├── nodejs/   combo_builder.js  + the same three files
@@ -66,24 +66,9 @@ All four language folders behave identically. Pick one and ignore the rest.
 
 ---
 
-## 4. Get the code
+## 4. Fill in `.env`
 
-Either download this folder as a ZIP from the Builder page (**Download example**), or take just this folder from Git:
-
-```bash
-git clone --filter=blob:none --no-checkout https://github.com/innorix/transfer-builder-artifacts.git
-cd transfer-builder-artifacts
-git sparse-checkout init --cone
-git sparse-checkout set send-matching-one-now-follow-up
-git checkout main
-cd send-matching-one-now-follow-up/python      # or nodejs / java / csharp
-```
-
----
-
-## 5. Fill in `.env`
-
-Open the language folder you chose. It already contains a `.env` generated by the Builder. Open it in any text editor and replace the placeholders. If the file is missing, create it from the template:
+Open the language folder you chose. It already contains a `.env` for this pattern, with placeholders for your own values. Open it in any text editor and replace them. If the file is missing, create it from the template:
 
 ```bash
 cp .env.builder.example .env            # macOS / Linux / Git Bash
@@ -92,51 +77,70 @@ cp .env.builder.example .env            # macOS / Linux / Git Bash
 Copy-Item .env.builder.example .env     # Windows PowerShell
 ```
 
-A complete `.env` for this example looks like this. Lines marked `# ← change` are the ones you must edit; everything else can stay as it is.
+These are the parts of that file that matter for this example (the full file also lists the alternative sign-in options and every other key):
 
 ```ini
-# ── Who am I ────────────────────────────────────────────────
-INNORIX_API_KEY=                       # ← change: paste your API key
-INNORIX_WORKSPACE_ID=                  # ← change: paste your Workspace ID
-INNORIX_BASE_URL=https://app.innorix.com
+# ── Authentication — set ONE of these ───────────────────────────────────
+#   INNORIX_API_KEY       long-lived user API key -> sent as the x-api-key header (recommended)
+#   INNORIX_ACCESS_TOKEN  short-lived JWT          -> sent as Authorization: Bearer
+#   INNORIX_EMAIL + INNORIX_PASSWORD               -> the script logs in for a token
+INNORIX_API_KEY=
+# INNORIX_WORKSPACE_ID=
 
-# ── Transfer type: one source → one target ──────────────────
-TRANSFER_TYPE=send_one
-SOURCE_ID=<deviceId>                   # ← change: ID of the device that has the files
-SOURCE_PATH=C:/data/out                # ← change: folder on the source (forward slashes)
-TARGET_ID=<deviceId>                   # ← change: ID of the device that receives them
-TARGET_PATH=C:/incoming                # ← change: folder on the target
-SOURCE_IS_DIR=true
+# ── Devices ─────────────────────────────────────────────────────────────
+# Use each device's deviceId (in the product: Devices -> select the device -> the ID at the top-right).
+SOURCE_ID=<deviceId>
+SOURCE_PATH=/data/out
+TARGET_ID=<deviceId>
+TARGET_PATH=/data/incoming
+SOURCE_IS_DIR=true            # false when the source path is a single file
 NAME=send-matching-one-now-follow-up
 
-# ── Start: right now, and wait for the result ───────────────
-START_WHEN=now
-WAIT=true
-WAIT_TIMEOUT=3600
+# ── When it runs ────────────────────────────────────────────────────────
+# Right now. The script waits for the run and prints the result.
+WAIT=true                     # false = create it and exit without waiting
+WAIT_TIMEOUT=3600             # seconds to wait for the run to finish
+APPEAR_WAIT=120               # seconds to wait for the run to start
+SCHEDULE_TZ=Asia/Seoul        # timezone of the automation
 
-# ── Matching files only ─────────────────────────────────────
-FILTER_EXT=exe,msi,bat                 # ← change to your own list (no dots)
-FILTER_MODE=deny                       # deny = send everything EXCEPT these | allow = send ONLY these
-# FILTER_MIN_MB=1                      # optional: skip files smaller than 1 MB
-# FILTER_MAX_MB=500                    # optional: skip files larger than 500 MB
-# FILTER_EXCLUDE=tmp                   # optional: skip files whose name contains this text
-INTEGRITY=true                         # verify every file after it arrives
+# ── File options ────────────────────────────────────────────────────────
+# Matching files only — Type Filter (extensions) and/or Size Filter (MB)
+FILTER_EXT=exe,msi,bat        # extension list (blank = no type filter)
+FILTER_MODE=deny              # allow = only these pass ; deny = these are blocked
+FILTER_MIN_MB=                # keep files >= this size, e.g. 1
+FILTER_MAX_MB=                # keep files <= this size, e.g. 500 (one bound only: MIN wins if both are set)
+SAVE_PATH=root                # root (no subfolder) | date (run-date subfolder) | device (subfolder per source device name)
+# SAVE_PATH_DATE_FORMAT=%y%m%d   # folder name format for SAVE_PATH=date
+DUPLICATE_ACTION=overwrite    # overwrite | rename | skip   (same file name at the target)
+INTEGRITY=true                # verify each file after the transfer
 
-# ── Follow-up action 1: virus scan before the files leave ───
-ON_VIRUS_SCAN=true
-VIRUS_SCAN_TYPE=mcafee                 # clamav | microsoft_defender | crowdstrike | … (see .env.builder.example)
-VIRUS_SCAN_NAME=builder-virus-scan-mcafee
-VIRUS_SCAN_CONFIG={"scanTiming":"before_transfer_source","onDetection":"alert_only","scanScope":"all"}
-#   scanTiming  : before_transfer_source | after_transfer_target
-#   onDetection : alert_only (skip the file, keep going) | block_transfer (stop)
-#   add the scanner's own fields (server URL, token, …) to this JSON — the script lists any that are missing
+# ── After transfer — follow-up actions (enable any; they may combine) ───
+# Events that fire Message / Virus Scan / Email / Monitoring:
+#   started, completed, paused, resumed, recovered, canceled, error, skipped
+NOTIFY_EVENTS=completed,error
 
-# ── Follow-up action 2: Slack message when the transfer starts
+# Message (slack, microsoft_teams, discord, telegram, ...) — a workspace-wide integration.
+#   Slack needs webhookUrl (and channel) in MESSAGE_CONFIG — without them it is saved but sends nothing.
+#   MESSAGE_EVENTS overrides NOTIFY_EVENTS for this action only (blank = NOTIFY_EVENTS).
 ON_MESSAGE=true
-MESSAGE_TYPE=slack                     # microsoft_teams | discord | telegram | … also work
+MESSAGE_TYPE=slack
 MESSAGE_NAME=builder-message-slack
-MESSAGE_EVENTS=started                 # started | completed | error | canceled … (comma list OK)
-MESSAGE_CONFIG={"webhookUrl":"https://hooks.slack.com/services/XXX","channel":"#transfers"}   # ← change
+MESSAGE_EVENTS=started,completed,error
+MESSAGE_CONFIG={"webhookUrl":"https://hooks.slack.com/services/XXX","channel":"#transfers"}
+
+# Virus Scan — a workspace-wide security integration.
+#   Only microsoft_defender is wired into the transfer pipeline today; other tools
+#   (mcafee, crowdstrike, kaspersky, clamav, ...) are saved but do not scan.
+#   VIRUS_SCAN_CONFIG (all required):
+#     scanTiming  : before_transfer_source | after_transfer_target | both
+#     onDetection : block_transfer | alert_only | admin_confirm   (stored; infected files are always skipped)
+#     scanScope   : all | executable_files_only | custom_exceptions
+ON_VIRUS_SCAN=true
+VIRUS_SCAN_TYPE=microsoft_defender
+VIRUS_SCAN_NAME=builder-virus-scan-defender
+VIRUS_SCAN_CONFIG={"scanTiming":"before_transfer_source","onDetection":"block_transfer","scanScope":"all"}
+
+# Email, Monitoring and Run API are also available here; see .env.builder.example.
 ```
 
 ### Where each value comes from
@@ -144,23 +148,24 @@ MESSAGE_CONFIG={"webhookUrl":"https://hooks.slack.com/services/XXX","channel":"#
 | Key | Put here | Where to find it |
 |---|---|---|
 | `INNORIX_API_KEY` | Your personal API key | Console → profile menu (bottom-left) → **Developer** |
-| `INNORIX_WORKSPACE_ID` | Your workspace ID | Same **Developer** dialog |
+| `INNORIX_WORKSPACE_ID` | Your workspace ID (optional) | Same dialog. Uncomment and set it if your account has more than one workspace |
 | `SOURCE_ID` / `TARGET_ID` | Device IDs | Console → **Devices** → select device → ID at top-right |
 | `SOURCE_PATH` | Folder on the source device | Any existing folder; use `/` even on Windows (`C:/data/out`) |
-| `TARGET_PATH` | Folder on the target device | Will be created if missing; not `/` or empty |
+| `TARGET_PATH` | Folder on the target device | Created if missing; not `/` or empty |
 | `FILTER_EXT` + `FILTER_MODE` | Extensions and whether they are blocked or allowed | Your choice. The Builder default blocks `exe,msi,bat` |
-| `VIRUS_SCAN_CONFIG` | JSON with the scanner's settings | Builder preset + your scanner's own fields |
-| `MESSAGE_CONFIG` | JSON with the Slack webhook URL | Slack → Apps → Incoming Webhooks |
+| `FILTER_MIN_MB` / `FILTER_MAX_MB` | Size bounds in megabytes (optional) | One bound is applied; if both are set, the minimum wins |
+| `MESSAGE_CONFIG` | JSON with the Slack webhook URL and channel | Slack → Apps → Incoming Webhooks |
+| `VIRUS_SCAN_CONFIG` | When to scan and what to do on detection | Keep the defaults to scan before sending and stop on a hit |
 
 Tips:
 
-- Set **only one** credential. `INNORIX_API_KEY` is the easiest. (`INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`, also work.)
-- `.env` holds secrets. Never commit it to Git or paste it into a ticket.
-- Every other key is explained line by line in `.env.builder.example`.
+- `INNORIX_API_KEY` is the easiest way to authenticate. The file also accepts `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`; set only one.
+- `.env` holds secrets. Never commit it or paste it into a ticket.
+- Every key is explained line by line in `.env.builder.example`.
 
 ---
 
-## 6. Run it
+## 5. Run it
 
 Run the command **inside the language folder**, so the script finds `.env`.
 
@@ -190,12 +195,11 @@ To use a different `.env`, pass its path: `python combo_builder.py path/to/other
 ### What you should see
 
 ```text
+[send-matching-one-now-follow-up]  1 device pair(s)
 integrations:
   ON_MESSAGE: notification/slack 'builder-message-slack' created (I2025…)
-  ON_VIRUS_SCAN: security/mcafee 'builder-virus-scan-mcafee' created (I2025…)
-[send_one / now]  1 device pair(s)
-transfer:
-  automation created: A2025…  (immediate: schedule type=none, startDateType=now)
+  ON_VIRUS_SCAN: security/microsoft_defender 'builder-virus-scan-defender' created (I2025…)
+automation created: A2025…
   waiting for the run to start and complete (polling every 3s; set WAIT=false to skip)...
   run started: 1 transfer(s) — T2025…
     status: started (0%)  [3s elapsed]
@@ -207,67 +211,71 @@ transfer:
 If you see a line like this, the follow-up action was saved but is not yet usable:
 
 ```text
-  ! ON_VIRUS_SCAN: VIRUS_SCAN_CONFIG is missing required fields: serverUrl, apiToken — the integration is saved but will not work
+  ! ON_MESSAGE: MESSAGE_CONFIG is missing required fields: webhookUrl — the integration is saved but will not work
 ```
 
-Add those fields to the JSON in `VIRUS_SCAN_CONFIG` (or `MESSAGE_CONFIG`) and run again. The script reuses the integration it already created, so running twice is safe.
+Add the listed fields to the JSON in `MESSAGE_CONFIG` (or `VIRUS_SCAN_CONFIG`) and run again. The script reuses the integration it already created, so running twice is safe.
 
 ### Confirm the result
 
-1. **Target device:** the files are in `TARGET_PATH`. Files that matched the deny list (`.exe`, `.msi`, `.bat`) are *not* there.
-2. **Console:** open **Transfers** (or **History**) in <https://app.innorix.com>; the run `T2025…` shows **Complete** with the file count.
-3. **Slack:** the channel in `MESSAGE_CONFIG` got a message when the transfer started.
+1. **Files arrived:** the files are in `TARGET_PATH` on the target device. Files that matched the deny list (`.exe`, `.msi`, `.bat`) are *not* there.
+2. **Console:** open **Transfers** (or **History**) in <https://app.innorix.com>; the run shows **Complete** with the file count.
+3. **Slack:** the channel in `MESSAGE_CONFIG` got a message when the transfer started and another when it completed.
 4. **Automations:** an automation named `send-matching-one-now-follow-up` was created. It has already run; delete it or keep it to run again from the console.
 
 ---
 
-## 7. Something went wrong?
+## 6. Something went wrong?
 
 | What you see | What to do |
 |---|---|
-| `missing required setting in .env: SOURCE_ID` | Fill in the key named in the message. Check you ran the command inside the language folder. |
+| `missing required setting in .env: …` | Fill in the key named in the message. Check you ran the command inside the language folder. |
 | `set INNORIX_API_KEY or INNORIX_ACCESS_TOKEN, or …` | No credential is set. Paste your API key into `INNORIX_API_KEY`. |
-| `API error 401` | The key is wrong, expired or belongs to another workspace. Regenerate it in **Developer** and check `INNORIX_WORKSPACE_ID`. |
+| `API error 401` | The key is wrong or expired. Regenerate it in **Developer**; if you have several workspaces, set `INNORIX_WORKSPACE_ID`. |
 | `API error 404` / device not found | A device ID is wrong or belongs to another workspace. Copy it again from **Devices**. |
-| `no transfer started within 120s` | The automation was created but no device picked it up. Check both devices are **online**; then raise `APPEAR_WAIT=300`. |
-| `no progress for 60s; check the target agent/connection` | The transfer stalled. Check the target device is online and `TARGET_PATH` is writable. |
-| Blocked files still arrive at the target | `FILTER_MODE` is `allow`, not `deny`, or the extensions have dots (`.exe`). Use `exe,msi,bat`. |
+| `no transfer started within 120s` | The automation was created but no device picked it up. Check the devices are **online**; then raise `APPEAR_WAIT=300`. |
+| `no progress for 60s; check the target agent/connection` | The transfer stalled. Check the receiving device is online and the target folder is writable. |
+| Blocked files still arrive | `FILTER_MODE` is `allow`, not `deny`, or the extension is missing from `FILTER_EXT`. Use `FILTER_MODE=deny` and `FILTER_EXT=exe,msi,bat`. |
 | `… is missing required fields` | Add the listed fields to the `*_CONFIG` JSON. To see all fields a provider needs: `GET /api/integrations/rules/<type>`. |
-| `cannot reach https://app.innorix.com` | Network or proxy. Node.js behind a proxy: `NODE_USE_ENV_PROXY=1 node combo_builder.js`. |
+| The files are not scanned | Only `VIRUS_SCAN_TYPE=microsoft_defender` scans today; other scanners are saved but do nothing. Defender must be present on the source device. |
+| `SAVE_PATH must be root|date|device` / `DUPLICATE_ACTION must be …` | Use one of the listed values exactly as written. |
+| `cannot reach https://app.innorix.com` | Network or proxy. Node.js behind a proxy: `NODE_USE_ENV_PROXY=1 node combo_builder.js` (Node 22.21+ / 24+). |
 | Anything else | Set `DEBUG=true` in `.env` and run again: every request and response is printed (secrets masked). |
 
 ---
 
-## 8. Change it without touching the code
+## 7. Change it without touching the code
 
-Everything below is a one-line change in `.env`.
+Everything below is a one-line change in `.env`. Anything beyond these keys (another transfer type, another start condition) is a different example: pick it from the table.
 
 - **Send only certain types instead of blocking some:** `FILTER_MODE=allow` and `FILTER_EXT=pdf,docx`.
-- **Filter by size or name:** `FILTER_MIN_MB`, `FILTER_MAX_MB`, `FILTER_EXCLUDE`.
-- **Message on completion instead of start:** `MESSAGE_EVENTS=completed,error`.
+- **Filter by size:** `FILTER_MIN_MB` or `FILTER_MAX_MB` (one bound is applied).
+- **Message only on completion:** `MESSAGE_EVENTS=completed,error`.
 - **Scan after arrival instead of before sending:** `"scanTiming":"after_transfer_target"` in `VIRUS_SCAN_CONFIG`.
-- **Stop the transfer when a virus is found:** `"onDetection":"block_transfer"`.
+- **Skip infected files but keep going:** `"onDetection":"alert_only"` (the default `block_transfer` stops the transfer).
 - **Add more follow-ups:** `ON_MONITORING=true` (Grafana, Datadog, …), `ON_EMAIL=true`, `ON_RUN_API=true` + `RUN_API_URL` to call your own webhook. They can be combined.
-- **Keep the folder structure in a dated subfolder:** `SAVE_PATH=date`. What to do with a file that already exists: `DUPLICATE_ACTION=overwrite|rename|skip`.
-- **Do not wait for the result:** `WAIT=false` — the script prints the automation ID and exits.
+- **Do not wait for the result:** `WAIT=false`. The script prints the automation ID and exits.
+- **Keep the files in a dated subfolder:** `SAVE_PATH=date`. What to do with a file that already exists: `DUPLICATE_ACTION=overwrite|rename|skip`.
 
 ### Related examples
 
 | If you want… | Use |
 |---|---|
-| The same transfer with no filter and no follow-ups | [`send-one-now/`](../send-one-now/) |
-| Only the file filter, no follow-ups | [`send-matching-one-now/`](../send-matching-one-now/) |
-| Only the follow-ups, all files | [`send-one-now-follow-up/`](../send-one-now-follow-up/) |
-| The same, but at a set date and time | [`send-matching-one-scheduled-follow-up/`](../send-matching-one-scheduled-follow-up/) |
+| The same, but every file (no filter) | [`send-one-now-follow-up/`](../send-one-now-follow-up/) |
+| The same, without follow-up actions | [`send-matching-one-now/`](../send-matching-one-now/) |
+| The same, but once at a set date and time | [`send-matching-one-scheduled-follow-up/`](../send-matching-one-scheduled-follow-up/) |
 | The same, but every day / week / month | [`send-matching-one-recurring-follow-up/`](../send-matching-one-recurring-follow-up/) |
+| The same, but when another transfer finishes | [`send-matching-one-after-transfer-follow-up/`](../send-matching-one-after-transfer-follow-up/) |
+| The same, but started by an HTTP request | [`send-matching-one-on-request-follow-up/`](../send-matching-one-on-request-follow-up/) |
 | The same, but to several target devices | [`send-matching-many-now-follow-up/`](../send-matching-many-now-follow-up/) |
+| The same, but collecting from several devices into one | [`collect-matching-many-now-follow-up/`](../collect-matching-many-now-follow-up/) |
 
-Full index of all 62 examples: [repository README](../README.md#builder-directory-index).
+Full index of all examples: [repository README](../README.md#builder-directory-index).
 
 ---
 
 ## Links
 
 - [Transfer Builder](https://innorix.com/en/builder/send-matching-one-now-follow-up) — change the options and regenerate `.env`
-- [Developer Center](https://innorix.com/en/developers) · [API Quickstart](https://innorix.com/en/developers#irxApiQuick) · [API Reference](https://innorix.com/en/developers#irxApiRef)
+- [Developer Center](https://innorix.com/en/developers) · [API Quickstart](https://innorix.com/en/developers#irxApiQuick) · [API Reference](https://innorix.com/en/docs/api)
 - [Product Guide — Connect devices](https://innorix.com/en/product-guide#connect-devices)

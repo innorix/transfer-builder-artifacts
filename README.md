@@ -192,13 +192,6 @@ Choose a builder based on the scenario. The first link opens the matching folder
 | [`collect-matching-many-on-request/`](./collect-matching-many-on-request/) | [Collect Matching Files from Many Devices When an External Request Arrives](https://innorix.com/en/builder/collect-matching-many-on-request) |
 | [`collect-matching-many-on-request-follow-up/`](./collect-matching-many-on-request-follow-up/) | [Collect Matching Files from Many Devices When an External Request Arrives With Follow-Up Actions](https://innorix.com/en/builder/collect-matching-many-on-request-follow-up) |
 
-### Other Builders
-
-| Repository directory | Builder page |
-|---|---|
-| [`upload-multiple-files/`](./upload-multiple-files/) | [Let Users Upload Multiple Files to Your Server](https://innorix.com/en/builder/upload-multiple-files) |
-| [`select-and-download-files/`](./select-and-download-files/) | [Let Users Select Multiple Files and Download Them Individually](https://innorix.com/en/builder/select-and-download-files) |
-
 ## Select a Builder Folder
 
 Git Sparse Checkout lets you keep only selected directories in your local working folder. It is useful when you want one builder or one language version instead of every example in the repository.

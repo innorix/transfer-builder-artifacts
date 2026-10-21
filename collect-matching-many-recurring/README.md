@@ -1,21 +1,243 @@
 # Collect Matching Files from Many Devices on a Recurring Schedule
 
-Result page: [innorix.com/en/builder/collect-matching-many-recurring](https://innorix.com/en/builder/collect-matching-many-recurring)
+> Builder page: <https://innorix.com/en/builder/collect-matching-many-recurring>
+> Pattern: **Collect from many** · **Matching files only** · **Recurring schedule** · **No follow-up actions**
 
-Gather only the files that meet your selection criteria from several source devices into one collection destination on a repeating schedule.
+Run it once, and INNORIX registers a recurring job: every hour, day, week or month at the time you set, the files in a folder on each of several devices (the **sources**) are gathered into one folder on a single device (the **target**), one transfer per source. The script exits right after registering. Each run happens on its own, even if the PC you ran the script on is off. Only files that pass your filter are included (for example, everything except `.exe`, `.msi` and `.bat`).
 
-| | This example |
-| --- | --- |
-| Devices | several source devices (`SOURCE_IDS`) → one target device |
-| Starts | on a recurring schedule (`REPEAT_EVERY` = hour · day · week · month) |
-| Files | only files that match the Type / Size filter (`FILTER_*`) |
-| After transfer | none |
+You do not write any code. The script in each language folder is written for this pattern; everything you need to supply lives in one `.env` file next to it.
 
-Pick one language. Each folder is self-contained: the script, `.env.builder.example` (+ `.env`) and a README.
+---
 
-| Language | Folder |
-| --- | --- |
-| Node.js | [`nodejs/combo_builder.js`](nodejs/) |
-| Python | [`python/combo_builder.py`](python/) |
-| Java | [`java/ComboBuilder.java`](java/) |
-| C# | [`csharp/ComboBuilder.cs`](csharp/) |
+## 1. What this example does
+
+| Builder choice | This example | In `.env` |
+|---|---|---|
+| Transfer type | Several source devices → one target device | `SOURCE_IDS`, `SOURCE_PATHS` → `TARGET_ID`, `TARGET_PATH` |
+| Files | Only files matching the type and size filter | `FILTER_EXT`, `FILTER_MODE`, `FILTER_MIN_MB`, `FILTER_MAX_MB` |
+| Start | Repeatedly: every hour, day, week or month | `REPEAT_EVERY`, `REPEAT_HOUR`, `REPEAT_MINUTE`, `REPEAT_AMPM`, `REPEAT_WEEKDAY`, `REPEAT_DAY_OF_MONTH`, `REPEAT_RUN_NOW` |
+| After transfer | Nothing. The transfer just runs | none |
+
+The script in this folder is written for exactly this pattern, so there is nothing to choose in the code: it reads `.env`, signs in to the INNORIX Public API, creates one automation with a repeating schedule (`POST /api/automations`) and exits. The INNORIX server starts a transfer on every occurrence. All device pairs go into one automation, so you get one job with several transfers inside it.
+
+If you want more or less than this, a neighbouring example is one option away. See [Related examples](#related-examples).
+
+---
+
+## 2. What you need before you start
+
+Tick these off first. Everything below is done in the INNORIX Platform console (<https://app.innorix.com>), not in code.
+
+1. **An INNORIX Platform account.** Sign up for free at <https://innorix.com/en/> if you do not have one.
+2. **Your API key.** In the console, open the profile menu at the bottom-left → **Developer** → copy the **API Key**. The same dialog shows your **Workspace ID**.
+3. **At least two source devices and one target device**, all connected. Go to **Devices → Connect Device** for each one. A PC or server needs the INNORIX Agent installed; object storage (S3, Azure Blob, …) is connected with its own credentials. Every device must show as **online**. (The `.env` template lists three sources; two is enough to try it.)
+4. **The device IDs.** In **Devices**, select a device; its ID is at the top-right. You need every source's ID and the target's ID.
+5. **A folder with a few test files on each source device** (the same path on all of them, or one path per source), and a **target folder path** on the target device (it is created if it does not exist).
+6. **The cadence you want:** every hour, every day at a time, every week on given weekdays, or every month on given days.
+7. **One runtime**, whichever language you prefer:
+
+   | Language | Needs |
+   |---|---|
+   | Python | Python 3.8+ and `pip install requests` |
+   | Node.js | Node.js 18+ (no packages to install) |
+   | Java | Java 11+ (no build tool needed) |
+   | C# | .NET 8 SDK |
+
+---
+
+## 3. Files in this folder
+
+```text
+collect-matching-many-recurring/
+├── README.md                 ← you are here
+├── python/
+│   ├── combo_builder.py      ← the script, written for this pattern (do not edit)
+│   ├── .env                  ← this pattern's settings; fill in the blanks
+│   ├── .env.builder.example  ← every key explained, for reference
+│   └── README.md             ← Python-specific notes
+├── nodejs/   combo_builder.js  + the same three files
+├── java/     ComboBuilder.java + the same three files
+└── csharp/   ComboBuilder.cs, combo_builder.csproj + the same files
+```
+
+All four language folders behave identically. Pick one and ignore the rest.
+
+---
+
+## 4. Fill in `.env`
+
+Open the language folder you chose. It already contains a `.env` for this pattern, with placeholders for your own values. Open it in any text editor and replace them. If the file is missing, create it from the template:
+
+```bash
+cp .env.builder.example .env            # macOS / Linux / Git Bash
+```
+```powershell
+Copy-Item .env.builder.example .env     # Windows PowerShell
+```
+
+These are the parts of that file that matter for this example (the full file also lists the alternative sign-in options and every other key):
+
+```ini
+# ── Authentication — set ONE of these ───────────────────────────────────
+#   INNORIX_API_KEY       long-lived user API key -> sent as the x-api-key header (recommended)
+#   INNORIX_ACCESS_TOKEN  short-lived JWT          -> sent as Authorization: Bearer
+#   INNORIX_EMAIL + INNORIX_PASSWORD               -> the script logs in for a token
+INNORIX_API_KEY=
+# INNORIX_WORKSPACE_ID=
+
+# ── Devices ─────────────────────────────────────────────────────────────
+# Use each device's deviceId (in the product: Devices -> select the device -> the ID at the top-right).
+SOURCE_IDS=<deviceId>,<deviceId>,<deviceId>   # every source device, comma separated
+SOURCE_PATHS=C:/data/out,/data/out,/data/out   # one path for every source, or one per source in the same order
+TARGET_ID=<deviceId>
+TARGET_PATH=C:/collect
+SOURCE_IS_DIR=true            # false when the source path is a single file
+NAME=collect-matching-many-recurring
+
+# ── When it runs ────────────────────────────────────────────────────────
+# Recurring.
+REPEAT_EVERY=week             # hour | day | week | month
+REPEAT_WEEKDAY=monday         # week  : sunday..saturday, or a list: mon,wed,fri
+REPEAT_DAY_OF_MONTH=1         # month : 1-31, or a list: 1,15  (last = last day)
+REPEAT_HOUR=09                # day / week / month (ignored for hour)
+REPEAT_MINUTE=00
+REPEAT_AMPM=am                # am | pm
+REPEAT_RUN_NOW=false          # false = first run at the next occurrence; true = also run once now
+REPEAT_START_AT=              # optional: exact first-run time (ISO), overrides REPEAT_RUN_NOW
+SCHEDULE_TZ=Asia/Seoul        # timezone of the automation
+
+# ── File options ────────────────────────────────────────────────────────
+# Matching files only — Type Filter (extensions) and/or Size Filter (MB)
+FILTER_EXT=exe,msi,bat        # extension list (blank = no type filter)
+FILTER_MODE=deny              # allow = only these pass ; deny = these are blocked
+FILTER_MIN_MB=                # keep files >= this size, e.g. 1
+FILTER_MAX_MB=                # keep files <= this size, e.g. 500 (one bound only: MIN wins if both are set)
+SAVE_PATH=root                # root (no subfolder) | date (run-date subfolder) | device (subfolder per source device name)
+# SAVE_PATH_DATE_FORMAT=%y%m%d   # folder name format for SAVE_PATH=date
+DUPLICATE_ACTION=overwrite    # overwrite | rename | skip   (same file name at the target)
+INTEGRITY=true                # verify each file after the transfer
+```
+
+### Where each value comes from
+
+| Key | Put here | Where to find it |
+|---|---|---|
+| `INNORIX_API_KEY` | Your personal API key | Console → profile menu (bottom-left) → **Developer** |
+| `INNORIX_WORKSPACE_ID` | Your workspace ID (optional) | Same dialog. Uncomment and set it if your account has more than one workspace |
+| `SOURCE_IDS` | All source device IDs, comma-separated | Console → **Devices** → select device → ID at top-right |
+| `TARGET_ID` | The collecting device's ID | Same place |
+| `SOURCE_PATHS` | One folder read on every source, or one per source | Must exist on each source; same order as `SOURCE_IDS` |
+| `TARGET_PATH` | Folder on the target device | Created if missing; not `/` or empty |
+| `REPEAT_EVERY` + clock keys | The cadence and the time of day | `hour` ignores the clock; `week` reads `REPEAT_WEEKDAY`; `month` reads `REPEAT_DAY_OF_MONTH` |
+| `SCHEDULE_TZ` | IANA time-zone name | The zone the clock is written in |
+| `FILTER_EXT` + `FILTER_MODE` | Extensions and whether they are blocked or allowed | Your choice. The Builder default blocks `exe,msi,bat` |
+| `FILTER_MIN_MB` / `FILTER_MAX_MB` | Size bounds in megabytes (optional) | One bound is applied; if both are set, the minimum wins |
+
+Tips:
+
+- `INNORIX_API_KEY` is the easiest way to authenticate. The file also accepts `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`; set only one.
+- `.env` holds secrets. Never commit it or paste it into a ticket.
+- Every key is explained line by line in `.env.builder.example`.
+
+---
+
+## 5. Run it
+
+Run the command **inside the language folder**, so the script finds `.env`.
+
+**Python**
+```bash
+pip install requests
+python combo_builder.py
+```
+
+**Node.js**
+```bash
+node combo_builder.js
+```
+
+**Java**
+```bash
+java ComboBuilder.java
+```
+
+**C#**
+```bash
+dotnet run
+```
+
+To use a different `.env`, pass its path: `python combo_builder.py path/to/other.env` (C#: `dotnet run -- path/to/other.env`).
+
+### What you should see
+
+```text
+[collect-matching-many-recurring]  3 device pair(s)
+  first run at 2026-10-27T09:00:00 (Asia/Seoul); no immediate run
+automation created: A2025…
+  repeat: every week {"type": "week", "hour": "09", "minute": "00", "ampm": "am", "timezone": "Asia/Seoul", "dayInWeek": ["monday"]}
+```
+
+### Confirm the result
+
+1. **Right away, in the console:** open **Automations**; `collect-matching-many-recurring` is listed with its next run. The script also printed `first run at …`.
+2. **On each occurrence:** a new run appears under **Transfers**, then **History**.
+3. **Files arrived:** the files are in `TARGET_PATH` on the target device, with the files from every source. Files that matched the deny list (`.exe`, `.msi`, `.bat`) are *not* there. Files with the same name from different sources overwrite each other by default; set `SAVE_PATH=device` to keep each source in its own subfolder.
+4. **Do not want to wait for the first occurrence?** Set `REPEAT_RUN_NOW=true` and run the script again: it runs once immediately *and* keeps the schedule.
+
+---
+
+## 6. Something went wrong?
+
+| What you see | What to do |
+|---|---|
+| `missing required setting in .env: …` | Fill in the key named in the message. Check you ran the command inside the language folder. |
+| `set INNORIX_API_KEY or INNORIX_ACCESS_TOKEN, or …` | No credential is set. Paste your API key into `INNORIX_API_KEY`. |
+| `API error 401` | The key is wrong or expired. Regenerate it in **Developer**; if you have several workspaces, set `INNORIX_WORKSPACE_ID`. |
+| `API error 404` / device not found | A device ID is wrong or belongs to another workspace. Copy it again from **Devices**. |
+| `SOURCE_PATHS must have 1 entry (same for all) or exactly N` | Give one path (read on every source) or exactly one path per ID in `SOURCE_IDS`, same order. |
+| It ran immediately | `REPEAT_RUN_NOW=true` is set. Set it to `false` to wait for the first occurrence. |
+| `REPEAT_WEEKDAY: invalid weekday` / `REPEAT_DAY_OF_MONTH: invalid day` | Use `monday`…`sunday` (or `mon,wed,fri`) and `1`-`31` or `last`. |
+| It runs at the wrong hour | `REPEAT_AMPM` or `SCHEDULE_TZ` is off. `REPEAT_HOUR` is a 12-hour clock: `02` + `pm` = 14:00. |
+| Blocked files still arrive | `FILTER_MODE` is `allow`, not `deny`, or the extension is missing from `FILTER_EXT`. Use `FILTER_MODE=deny` and `FILTER_EXT=exe,msi,bat`. |
+| `SAVE_PATH must be root|date|device` / `DUPLICATE_ACTION must be …` | Use one of the listed values exactly as written. |
+| `cannot reach https://app.innorix.com` | Network or proxy. Node.js behind a proxy: `NODE_USE_ENV_PROXY=1 node combo_builder.js` (Node 22.21+ / 24+). |
+| Anything else | Set `DEBUG=true` in `.env` and run again: every request and response is printed (secrets masked). |
+
+---
+
+## 7. Change it without touching the code
+
+Everything below is a one-line change in `.env`. Anything beyond these keys (another transfer type, another start condition) is a different example: pick it from the table.
+
+- **Send only certain types instead of blocking some:** `FILTER_MODE=allow` and `FILTER_EXT=pdf,docx`.
+- **Filter by size:** `FILTER_MIN_MB` or `FILTER_MAX_MB` (one bound is applied).
+- **Add follow-up actions:** this script does not create integrations; use the follow-up variant of this example instead (second row of the table below).
+- **Daily instead of weekly:** `REPEAT_EVERY=day`; several weekdays: `REPEAT_EVERY=week` and `REPEAT_WEEKDAY=mon,wed,fri`.
+- **Monthly on the 1st and 15th, or the last day:** `REPEAT_EVERY=month` and `REPEAT_DAY_OF_MONTH=1,15` (or `last`).
+- **Every hour:** `REPEAT_EVERY=hour` (runs at the top of each hour; the clock keys are ignored).
+- **Start on an exact date:** `REPEAT_START_AT=2026-11-02T09:00:00` pins the first run.
+- **Keep each source apart:** `SAVE_PATH=device` creates one subfolder per source device under `TARGET_PATH`.
+- **Keep the files in a dated subfolder:** `SAVE_PATH=date`. What to do with a file that already exists: `DUPLICATE_ACTION=overwrite|rename|skip`.
+
+### Related examples
+
+| If you want… | Use |
+|---|---|
+| The same, but every file (no filter) | [`collect-many-recurring/`](../collect-many-recurring/) |
+| The same, plus follow-up actions (virus scan, Slack, …) | [`collect-matching-many-recurring-follow-up/`](../collect-matching-many-recurring-follow-up/) |
+| The same, but right now | [`collect-matching-many-now/`](../collect-matching-many-now/) |
+| The same, but once at a set date and time | [`collect-matching-many-scheduled/`](../collect-matching-many-scheduled/) |
+| The same, but when another transfer finishes | [`collect-matching-many-after-transfer/`](../collect-matching-many-after-transfer/) |
+| The same, but started by an HTTP request | [`collect-matching-many-on-request/`](../collect-matching-many-on-request/) |
+| The same, but to one device | [`send-matching-one-recurring/`](../send-matching-one-recurring/) |
+| The same, but to several target devices | [`send-matching-many-recurring/`](../send-matching-many-recurring/) |
+
+Full index of all examples: [repository README](../README.md#builder-directory-index).
+
+---
+
+## Links
+
+- [Transfer Builder](https://innorix.com/en/builder/collect-matching-many-recurring) — change the options and regenerate `.env`
+- [Developer Center](https://innorix.com/en/developers) · [API Quickstart](https://innorix.com/en/developers#irxApiQuick) · [API Reference](https://innorix.com/en/docs/api)
+- [Product Guide — Connect devices](https://innorix.com/en/product-guide#connect-devices)
