@@ -1,18 +1,16 @@
 // =============================================================================
-//  INNORIX Transfer Builder example (combo_builder.js)  —  Node.js port
+//  INNORIX Transfer Builder example — Collect Matching Files from Many Devices on a Recurring Schedule
 // -----------------------------------------------------------------------------
-//  Runs the configuration you picked in the INNORIX "Transfer Builder" from a
-//  single .env file. Behaves the same as the Python version (combo_builder.py).
-//  See the README (README.md) for details.
+//  Result page : https://innorix.com/en/builder/collect-matching-many-recurring
+//  Devices     : several source devices (SOURCE_IDS) -> one target device
+//  Starts      : on a recurring schedule (REPEAT_EVERY hour | day | week | month)
+//  Files       : only files that match FILTER_EXT / FILTER_MIN_MB / FILTER_MAX_MB
 //
+//  Every setting lives in the .env file next to this script (see .env.builder.example).
 //  Requirements:  Node.js 18+ (uses the built-in fetch, no external dependencies)
 //  Run:
 //    node combo_builder.js                 # use the .env in this folder
 //    node combo_builder.js path/to/x.env   # or point it at another .env
-//
-//  Two axes: TRANSFER_TYPE(send_one/send_many/collect/sync) x START_WHEN(now/schedule/
-//  repeat/after_previous/external). Authenticate with INNORIX_API_KEY (x-api-key), or
-//  INNORIX_ACCESS_TOKEN (Bearer), or INNORIX_EMAIL + INNORIX_PASSWORD login.
 // =============================================================================
 
 'use strict';
@@ -64,11 +62,6 @@ function envFloat(key, dflt = null) {
 }
 function envList(key) {
   return (env(key) || '').split(',').map((s) => s.trim()).filter(Boolean);
-}
-function envJson(key, dflt = null) {
-  const v = env(key);
-  if (v === null) return dflt;
-  try { return JSON.parse(v); } catch (e) { fail(`${key} must be valid JSON: ${e.message}`); }
 }
 function require_(key) {
   const v = env(key);
@@ -170,39 +163,6 @@ class Api {
   }
 }
 
-const TERMINAL = new Set([2, 4, 5, 9, 99]);   // complete, error, cancelled, partial, fail
-const STATUS = {
-  '-1': 'queued', 0: 'waiting', 1: 'started', 2: 'complete', 3: 'paused', 4: 'error',
-  5: 'cancelled', 6: 'transferring', 7: 'skipped', 8: 'retry', 9: 'partial-complete',
-  10: 'retry-checking', 11: 'virus-scanning', 12: 'syncing', 13: 'incoming', 14: 'activity', 99: 'fail',
-};
-
-const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-
-async function waitFor(api, monitorId, timeoutSec, intervalSec = 3, heartbeatSec = 15) {
-  // Poll GET /api/transfers/{monitorId} until terminal; print on change + heartbeat.
-  const start = Date.now();
-  let lastBeat = start, lastChange = start, lastState = null;
-  while ((Date.now() - start) / 1000 < timeoutSec) {
-    const detail = (await api.call('GET', `/api/transfers/${monitorId}`)) || {};
-    const status = detail.status;
-    const percent = detail.percent ?? detail.progress ?? 0;
-    const now = Date.now();
-    const state = `${status}|${percent}`;
-    if (state !== lastState) { lastState = state; lastChange = now; }
-    if (state !== lastState || now - lastBeat >= heartbeatSec * 1000 || lastBeat === start) {
-      const stalled = Math.floor((now - lastChange) / 1000);
-      const note = stalled >= 60 ? `  — no progress for ${stalled}s; check the target agent/connection` : '';
-      console.log(`    status: ${STATUS[status] ?? status} (${percent}%)  [${Math.floor((now - start) / 1000)}s elapsed]${note}`);
-      lastBeat = now;
-    }
-    if (detail.isTerminal ?? TERMINAL.has(status)) return detail;
-    await sleep(intervalSec * 1000);
-  }
-  throw new Error(`transfer ${monitorId} did not finish within ${timeoutSec}s ` +
-    '(still running — raise WAIT_TIMEOUT, or set WAIT=false to not wait)');
-}
-
 // Automation details use plain absolute paths (forward slashes) in
 // sourceItem[].filePath and targetPath — not the {deviceId}_ino_{base64} token.
 function plainPath(rawPath) {
@@ -212,51 +172,26 @@ function nowIso() {
   return new Date().toISOString().replace(/\.\d+Z$/, '.000Z');
 }
 
-// ================================================================== devices (axis 1)
+// ================================================================== devices
 // Line a *_PATHS list up with its *_IDS list: 1 path = same for all, N = one each.
 function expandPaths(paths, count, pathsKey, idsKey) {
-  if (!paths.length) fail(`${pathsKey} is required for this transfer type (one path, or one per ${idsKey})`);
+  if (!paths.length) fail(`${pathsKey} is required (one path, or one per ${idsKey})`);
   if (paths.length === 1) return Array(count).fill(paths[0]);
   if (paths.length === count) return paths;
   fail(`${pathsKey} must have 1 entry (same for all) or exactly ${count} (one per ${idsKey})`);
 }
 
-// Resolve the device list + its paths, with a fallback to the single keys: if the *_IDS
-// list is empty use the single *_ID, and if the *_PATHS list is empty use the single *_PATH.
-function resolveList(listIdsKey, singleIdKey, listPathsKey, singlePathKey, kind) {
-  let ids = envList(listIdsKey);
-  if (!ids.length) {
-    const one = env(singleIdKey);
-    if (!one) fail(`${kind} needs ${listIdsKey} (or a single ${singleIdKey})`);
-    ids = [one];
-  }
-  let paths = envList(listPathsKey);
-  if (!paths.length && env(singlePathKey)) paths = [env(singlePathKey)];
-  paths = expandPaths(paths, ids.length, `${listPathsKey} (or ${singlePathKey})`, listIdsKey);
-  return [ids, paths];
-}
-
-function devicePairs(transferType) {
-  // send_many : one source (SOURCE_ID + SOURCE_PATH) + target list (TARGET_IDS + TARGET_PATHS)
-  // collect   : one target (TARGET_ID + TARGET_PATH) + source list (SOURCE_IDS + SOURCE_PATHS)
-  // send_one/sync : single SOURCE_* and TARGET_* pair
-  if (transferType === 'send_many') {
-    const source = require_('SOURCE_ID'), sourcePath = require_('SOURCE_PATH');
-    const [targets, paths] = resolveList('TARGET_IDS', 'TARGET_ID', 'TARGET_PATHS', 'TARGET_PATH', 'send_many');
-    return targets.map((t, i) => [source, sourcePath, t, paths[i]]);
-  }
-  if (transferType === 'collect') {
-    const target = require_('TARGET_ID'), targetPath = require_('TARGET_PATH');
-    const [sources, paths] = resolveList('SOURCE_IDS', 'SOURCE_ID', 'SOURCE_PATHS', 'SOURCE_PATH', 'collect');
-    return sources.map((s, i) => [s, paths[i], target, targetPath]);
-  }
-  const source = require_('SOURCE_ID'), sourcePath = require_('SOURCE_PATH');   // send_one, sync
+// Every device in SOURCE_IDS (+ SOURCE_PATHS) -> one target (TARGET_ID + TARGET_PATH).
+function devicePairs() {
   const target = require_('TARGET_ID'), targetPath = require_('TARGET_PATH');
-  return [[source, sourcePath, target, targetPath]];
+  const sources = envList('SOURCE_IDS');
+  if (!sources.length) fail('missing required setting in .env: SOURCE_IDS');
+  const paths = expandPaths(envList('SOURCE_PATHS'), sources.length, 'SOURCE_PATHS', 'SOURCE_IDS');
+  return sources.map((s, i) => [s, paths[i], target, targetPath]);
 }
 
 // ================================================================== file options
-const DUPLICATE_MAP = { skip: 'nosend', overwrite: 'overwrite', rename: 'numbering', nosend: 'nosend', numbering: 'numbering' };
+const DUPLICATE_MAP = { skip: 'nosend', overwrite: 'overwrite', rename: 'numbering' };
 
 // SAVE_PATH=device marks the options object here; automationDetail() swaps it for the
 // per-pair source device name (the marker never reaches the request body).
@@ -286,11 +221,13 @@ async function loadDeviceNames(api) {
 }
 
 function fileOptions() {
+  // Duplicated Name — what to do when the target already has a file with the same name
   const raw = env('DUPLICATE_ACTION', 'overwrite').toLowerCase();
   const action = DUPLICATE_MAP[raw];
   if (!action) fail(`DUPLICATE_ACTION must be overwrite|rename|skip, got: ${raw}`);
   const options = { 'target-action': action };
 
+  // Matching files only — Type Filter (extensions, allow/deny) + Size Filter (MB)
   const fo = {};
   const exts = envList('FILTER_EXT');
   if (exts.length) {
@@ -304,127 +241,20 @@ function fileOptions() {
   } else if (maxMb !== null) {
     fo.fileSize = { size: Math.round(maxMb * 1024 * 1024), over: false, equal: true };
   }
-  const exclude = env('FILTER_EXCLUDE');
-  if (exclude) fo.fileName = { name: exclude, allow: false };
   if (Object.keys(fo).length) options['send-fileoption'] = fo;
 
   // Save Path: `savepath` carries the TARGET SUBFOLDER NAME as a string; `optionPath` only
-  // records which mode produced it (1=run date, 2=device name, 3=custom). The server does not
-  // build the name from optionPath, so sending a boolean creates a folder named "true".
-  // The source folder structure is preserved under the target path either way.
-  const save = env('SAVE_PATH', 'false').toLowerCase();
-  if (['false', 'off', 'no', '0', 'true', 'on', 'yes', '1', 'root'].includes(save)) { /* no subfolder */ }
-  else if (['date', 'yymmdd', 'start_date'].includes(save)) { options.savepath = runDateFolder(); options.optionPath = 1; }
-  else if (['device', 'device_name'].includes(save)) { options.optionPath = 2; options[SAVEPATH_DEVICE_FLAG] = true; }
-  else if (['custom', 'custom_name'].includes(save)) { options.savepath = require_('SAVE_PATH_NAME'); options.optionPath = 3; }
-  else if (['transfer-id', 'transfer_id', 'transferid'].includes(save)) fail('SAVE_PATH=transfer-id is not supported: the target subfolder name must be known before the transfer is created, so the transfer ID cannot be used. Use date, device or custom.');
-  else fail(`SAVE_PATH must be root|date|device|custom (or true/false), got: ${save}`);
+  // records which mode produced it (1=run date, 2=device name). The source folder
+  // structure is preserved under the target path either way.
+  const save = env('SAVE_PATH', 'root').toLowerCase();
+  if (['root', 'false'].includes(save)) { /* no subfolder */ }
+  else if (save === 'date') { options.savepath = runDateFolder(); options.optionPath = 1; }
+  else if (save === 'device') { options.optionPath = 2; options[SAVEPATH_DEVICE_FLAG] = true; }
+  else fail(`SAVE_PATH must be root|date|device, got: ${save}`);
   return { options, integrity: envBool('INTEGRITY') };
 }
 
-// ================================================================== after transfer
-const INTEGRATIONS = [   // toggle, category, .env prefix (Monitoring is a processor, see below)
-  ['ON_MESSAGE', 'notification', 'MESSAGE'],
-  ['ON_VIRUS_SCAN', 'security', 'VIRUS_SCAN'],
-  ['ON_EMAIL', 'email', 'EMAIL'],
-];
-
-function notifyEvents(prefix) {
-  // <PREFIX>_EVENTS (per action, from the builder's Timing) wins over the shared NOTIFY_EVENTS
-  const perAction = prefix ? envList(`${prefix}_EVENTS`) : [];
-  const evs = perAction.length ? perAction : envList('NOTIFY_EVENTS').length ? envList('NOTIFY_EVENTS') : ['completed', 'error'];
-  return Object.fromEntries(evs.map((e) => [e, true]));
-}
-
-async function ensureIntegrations(api) {
-  for (const [toggle, category, prefix] of INTEGRATIONS) {
-    if (!envBool(toggle)) continue;
-    const events = notifyEvents(prefix);
-    const provider = require_(`${prefix}_TYPE`).toLowerCase();
-    const config = envJson(`${prefix}_CONFIG`, {}) || {};
-    if (typeof config !== 'object' || Array.isArray(config)) fail(`${prefix}_CONFIG must be a JSON object`);
-    const name = env(`${prefix}_NAME`) || config.name || `builder-${provider}`;
-    if (config.name === undefined) config.name = name;
-
-    const rules = (await api.call('GET', `/api/integrations/rules/${provider}`)) || {};
-    const rule = rules[provider] || Object.values(rules)[0] || null;
-    if (!rule) console.log(`  ! ${toggle}: unknown provider '${provider}' — check ${prefix}_TYPE`);
-    else {
-      const missing = (rule.fields || []).filter((f) => f.required && config[f.id] === undefined).map((f) => f.id);
-      if (missing.length) {
-        const detail = `${toggle}: ${prefix}_CONFIG is missing required fields: ${missing.join(', ')} — the integration is saved but will not work`;
-        if (envBool('INTEGRATION_STRICT', false)) fail(`  ! ${detail} (INTEGRATION_STRICT=true)`);
-        console.log(`  ! ${detail}`);
-      }
-    }
-
-    const existing = (await api.call('GET', '/api/integrations', undefined, { category })) || [];
-    const found = existing.find((it) => it.type === provider && it.name === name);
-    if (found) { console.log(`  ${toggle}: ${category}/${provider} '${name}' already exists, reused`); continue; }
-    const bodyReq = { name, type: provider, category, config, notificationConfig: { events } };
-    for (const k of ['webhookUrl', 'baseUrl', 'mode', 'authType']) if (config[k] !== undefined) bodyReq[k] = config[k];
-    if (config.webhookUrl !== undefined && bodyReq.mode === undefined) bodyReq.mode = 'webhook';
-    const result = (await api.call('POST', '/api/integrations', bodyReq)) || {};
-    console.log(`  ${toggle}: ${category}/${provider} '${name}' created (${result.integrationId || result.id})`);
-  }
-}
-
-function runApiProcessor() {
-  // Public API spec: a run action needs category="run" and type="http"|"command"|"script",
-  // and every parameter goes under `config` (url / method / body / deviceId / events /
-  // waitForResult). Top-level url/method are deprecated, and a processor without
-  // category="run" is dropped by the server without an error.
-  if (!envBool('ON_RUN_API')) return null;
-  let action = env('RUN_API_TYPE', 'http').toLowerCase();
-  if (action === 'https') action = 'http';            // builder used to emit this
-  if (!['http', 'command', 'script'].includes(action)) fail(`RUN_API_TYPE must be http|command|script, got: ${action}`);
-
-  const config = {};
-  if (action === 'http') {
-    config.url = require_('RUN_API_URL');
-    config.method = env('RUN_API_METHOD', 'POST').toUpperCase();
-    if (env('RUN_API_BODY')) {
-      const parsed = envJson('RUN_API_BODY', null);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) fail('RUN_API_BODY must be a JSON object, e.g. {"key":"value"}');
-      config.body = parsed;
-    }
-  } else if (action === 'command') {
-    config.command = require_('RUN_API_COMMAND');
-  } else {
-    config.file = require_('RUN_API_SCRIPT');
-    if (env('RUN_API_ARGS')) config.args = env('RUN_API_ARGS');
-  }
-
-  // Run On: source device = senderId, target device = receiverId (omit -> the transfer's device)
-  const device = env('RUN_API_DEVICE', '').toLowerCase();
-  if (['source', 'sender'].includes(device)) config.deviceId = require_('SOURCE_ID');
-  else if (['target', 'receiver'].includes(device)) config.deviceId = require_('TARGET_ID');
-  else if (device) config.deviceId = env('RUN_API_DEVICE');
-
-  // config.events = {completed: true, ...}; omit to fire on every event.
-  // "Run" is a builder label, not a transfer event, so it is ignored here.
-  const events = envList('RUN_API_EVENTS').filter((e) => e.toLowerCase() !== 'run');
-  if (events.length) config.events = Object.fromEntries(events.map((e) => [e, true]));
-  if (envBool('RUN_API_WAIT', false)) config.waitForResult = true;
-
-  return { category: 'run', type: action, name: env('RUN_API_NAME', 'builder-run-api'), config };
-}
-
-function monitoringProcessor() {
-  if (!envBool('ON_MONITORING')) return null;
-  const provider = require_('MONITORING_TYPE').toLowerCase();
-  const config = envJson('MONITORING_CONFIG', {}) || {};
-  if (typeof config !== 'object' || Array.isArray(config)) fail('MONITORING_CONFIG must be a JSON object');
-  const name = env('MONITORING_NAME') || config.name || `builder-${provider}`;
-  if (config.name === undefined) config.name = name;
-  return { category: 'monitoring', type: provider, name, config, notificationConfig: { events: notifyEvents('MONITORING') } };
-}
-
-function afterTransferProcessors() {
-  return [runApiProcessor(), monitoringProcessor()].filter(Boolean);
-}
-
-// ================================================================== schedule (axis 2)
+// ================================================================== when it runs
 const WEEKDAY = { sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday' };
 // JS Date.getDay(): Sunday=0 .. Saturday=6
 const WEEKDAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
@@ -455,6 +285,7 @@ function fmtNaive(d) {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
 }
 function nextOccurrence(every, weekdays, doms) {
+  // first future time matching the cadence + clock, in SCHEDULE_TZ
   const now = nowInTz(env('SCHEDULE_TZ', 'Asia/Seoul'));
   if (every === 'hour') {
     const top = new Date(now); top.setMinutes(0, 0, 0);
@@ -475,6 +306,8 @@ function nextOccurrence(every, weekdays, doms) {
   return base;
 }
 function startFields(every, weekdays, doms) {
+  // REPEAT_START_AT wins; else REPEAT_RUN_NOW=true also runs once now;
+  // default: no immediate run, the first run is the next occurrence.
   const startAt = env('REPEAT_START_AT');
   if (startAt) return { startDateType: 'specific', startDate: startAt };
   if (envBool('REPEAT_RUN_NOW', false)) return { startDateType: 'now', startDate: nowIso() };
@@ -482,7 +315,9 @@ function startFields(every, weekdays, doms) {
   console.log(`  first run at ${first} (${env('SCHEDULE_TZ', 'Asia/Seoul')}); no immediate run`);
   return { startDateType: 'specific', startDate: first };
 }
-function buildRepeatSchedule() {
+
+// Recurring: schedule type hour | day | week | month.
+function buildSchedule() {
   const every = env('REPEAT_EVERY', 'day').toLowerCase();
   if (!['hour', 'day', 'week', 'month'].includes(every)) fail(`REPEAT_EVERY must be hour|day|week|month, got: ${every}`);
   const weekdays = new Set(), doms = new Set();
@@ -498,8 +333,8 @@ function buildRepeatSchedule() {
   } else if (every === 'month') {
     const dates = [];
     for (const d of (envList('REPEAT_DAY_OF_MONTH').length ? envList('REPEAT_DAY_OF_MONTH') : ['1'])) {
-      const day = ['lastday', 'last', 'last_day', 'eom'].includes(d.trim().toLowerCase()) ? '0' : d;   // builder's "Last day"
-      if (!/^\d+$/.test(day) || +day < 0 || +day > 31) fail(`REPEAT_DAY_OF_MONTH: invalid day '${d}' (1-31, 0 or 'lastday' = last day)`);
+      const day = ['lastday', 'last'].includes(d.trim().toLowerCase()) ? '0' : d;   // "Last day" -> 0
+      if (!/^\d+$/.test(day) || +day < 0 || +day > 31) fail(`REPEAT_DAY_OF_MONTH: invalid day '${d}' (1-31, or 'last' = last day)`);
       dates.push(String(+day)); doms.add(+day);
     }
     sched.dayInMonth = dates;
@@ -507,221 +342,61 @@ function buildRepeatSchedule() {
   Object.assign(sched, startFields(every, weekdays, doms));
   return sched;
 }
-// hour/minute/ampm for a 'YYYY-MM-DDTHH:MM' stamp (12-hour clock, as the API wants)
-function clockFrom(stamp) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(stamp || ''));
-  if (!m) return {};
-  const h = Number(m[4]);
-  return { hour: String(h % 12 || 12).padStart(2, '0'), minute: m[5], ampm: h >= 12 ? 'pm' : 'am' };
-}
-
-function buildSchedule(startWhen) {
-  const tz = env('SCHEDULE_TZ', 'Asia/Seoul');
-  if (startWhen === 'schedule') {
-    // the clock fields must travel with startDate: without them the server falls back to its
-    // own default clock (12 pm UTC) and runs at the wrong hour — and on the wrong day
-    const at = require_('SCHEDULE_AT');
-    return { type: 'none', startDateType: 'specific', startDate: at, timezone: tz, ...clockFrom(at) };
-  }
-  if (startWhen === 'repeat') return buildRepeatSchedule();
-  if (startWhen === 'after_previous') return { type: 'none', startDateType: 'now', startDate: nowIso(), timezone: tz, triggerAutomation: { value: require_('PREV_AUTOMATION_ID') } };
-  // startDateType must NOT be 'now' for a command trigger — that runs the automation once at creation
-  if (startWhen === 'external') return { type: 'none', startDateType: 'specific', startDate: nowIso(), timezone: tz };
-  return null;
-}
 
 // ================================================================== automation body
-function automationDetail(pair, options, integrity, isDir, isSync) {
+function automationDetail(pair, options, integrity, isDir) {
   const [source, sourcePath, target, targetPath] = pair;
   const detailOptions = { ...options };
   if (detailOptions[SAVEPATH_DEVICE_FLAG]) {
     delete detailOptions[SAVEPATH_DEVICE_FLAG];
-    // subfolder per SOURCE device, so a collect (N:1) keeps each sender separate
+    // subfolder per SOURCE device
     detailOptions.savepath = DEVICE_NAMES[source] || source;
   }
   if (integrity) detailOptions.checkIntegrity = true;
-  if (isSync) {
-    detailOptions.syncType = env('SYNC_DIRECTION', 'one_way').toLowerCase() === 'two_way' ? 2 : 1;
-    const watch = env('SYNC_WATCH', 'file_created').toLowerCase();
-    const watchMap = { file_created: 1, file_modified: 2, both: 3 };   // both needs server support
-    if (!(watch in watchMap)) fail(`SYNC_WATCH must be file_created|file_modified|both, got: ${watch}`);
-    detailOptions.watchFolderType = watchMap[watch];
-  }
   // Plain absolute paths: sourceItem[].filePath for the source, targetPath for the
   // destination (both forward-slashed). targetPath must not be "/" or empty.
   const item = { filePath: plainPath(sourcePath), isDir };
   return {
-    senderId: source, receiverId: target, sourceItem: [item],   // aliases sourceId/targetId also accepted
+    senderId: source, receiverId: target, sourceItem: [item],
     targetPath: plainPath(targetPath), step: 1,
     transferOptions: { noSchedule: false, ...detailOptions },
   };
 }
 
-function automationBody(name, pairs, options, integrity, isDir, schedule, processors, isSync) {
-  const startWhen = env('START_WHEN');
-  const transferType = isSync ? 'sync' : (startWhen === 'external' ? 'command' : 'normal');
-  const tz = env('SCHEDULE_TZ', 'Asia/Seoul');
+function automationBody(name, pairs, options, integrity, isDir, schedule) {
   const body = {
-    name, flowName: name, transferType, timezone: tz,
-    details: pairs.map((p) => automationDetail(p, options, integrity, isDir, isSync)),
-    schedules: [schedule || { type: 'none', startDateType: 'now', startDate: nowIso(), timezone: tz }],
+    name, flowName: name, transferType: 'normal', timezone: env('SCHEDULE_TZ', 'Asia/Seoul'),
+    details: pairs.map((p) => automationDetail(p, options, integrity, isDir)),
+    schedules: [schedule],
     step: 1, isUpcoming: false,
   };
-  let flowId = env('FLOW_ID');
-  if (startWhen === 'after_previous' && !flowId) flowId = `builder-flow-${Math.floor(Date.now() / 1000)}`;
-  if (flowId) body.flowId = flowId;
-  if (processors.length) body.processors = processors;
   return body;
 }
 
-// ================================================================== immediate transfer
-async function waitAll(api, monitorIds) {
-  let failed = 0;
-  for (const monitorId of monitorIds) {
-    const detail = await waitFor(api, monitorId, envInt('WAIT_TIMEOUT', 3600));
-    const status = detail.status;
-    console.log(`  finished ${monitorId}: ${STATUS[status] ?? status} (${detail.fileCount || 0} files)`);
-    if (status !== 2) failed++;
-  }
-  return failed ? 1 : 0;
-}
-
-// Non-transfer summary row kinds in the active list — skip these; a real transfer
-// row has type "monitor" (its top-level monitorId is the id to poll).
-const SKIP_ROW_TYPES = new Set(['automation', 'history', 'flow']);
-
-async function activeMonitorIds(api, automationId) {
-  // monitorIds of this automation's currently-active transfers, from the active-transfer
-  // list GET /api/transfers?automationId=... . This shows a transfer as soon as it STARTS
-  // (unlike the execution log, which reflects finished runs). The response is
-  // cursor-paginated: data = { data: [records], pagination: {...} } and a transfer row
-  // looks like { type: 'monitor', monitorId: 'T...', status: 1, ... }.
-  const result = await api.call('GET', '/api/transfers', undefined, { automationId });
-  const records = (result && typeof result === 'object' && !Array.isArray(result)) ? (result.data || []) : (result || []);
-  return records
-    .filter((r) => !SKIP_ROW_TYPES.has(r.type))   // skip automation/history summary rows
-    .map((r) => r.monitorId || r.id)              // monitorId (== id) is what we poll
-    .filter(Boolean);
-}
-
-async function resolveMonitorIds(api, automationId, expected, intervalSec = 3, appearWaitSec = 120) {
-  // Poll the active-transfer list until the run(s) start and collect their monitorIds
-  // (accumulated across polls, so a short transfer that finishes between polls is not missed).
-  const start = Date.now();
-  const seen = [];
-  for (;;) {
-    for (const mid of await activeMonitorIds(api, automationId)) if (!seen.includes(mid)) seen.push(mid);
-    if (seen.length >= expected || (Date.now() - start) / 1000 >= appearWaitSec) {
-      return seen.length >= expected ? seen.slice(0, expected) : seen;
-    }
-    console.log(`    waiting for the run to start... (${seen.length}/${expected}) [${Math.floor((Date.now() - start) / 1000)}s]`);
-    await sleep(intervalSec * 1000);
-  }
-}
-
-async function runImmediateAutomation(api, name, pairs, options, integrity, isDir, processors) {
-  // START_WHEN=now -> ONE POST /api/automations with a type=none,
-  // startDateType=now schedule (runs immediately). All pairs go in details[].
-  const tz = env('SCHEDULE_TZ', 'Asia/Seoul');
-  const schedule = { type: 'none', startDateType: 'now', startDate: nowIso(), timezone: tz };
-  const body = automationBody(name, pairs, options, integrity, isDir, schedule, processors, false);
-  const automationId = (await api.call('POST', '/api/automations', body)).automationId;
-  console.log(`  automation created: ${automationId}  (immediate: schedule type=none, startDateType=now)`);
-
-  if (!envBool('WAIT', true)) {
-    console.log(`  (WAIT=false) not waiting; find the transfer with GET /api/transfers?automationId=${automationId}`);
-    return 0;
-  }
-  console.log('  waiting for the run to start and complete (polling every 3s; set WAIT=false to skip)...');
-  const appearWait = envInt('APPEAR_WAIT', 120);
-  const monitorIds = await resolveMonitorIds(api, automationId, pairs.length, 3, appearWait);
-  if (!monitorIds.length) {
-    console.log(`  ERROR: no transfer started within ${appearWait}s — the automation was created but nothing ran. Check GET /api/transfers?automationId=${automationId}`);
-    return 1;
-  }
-  const missing = pairs.length - monitorIds.length;
-  if (missing > 0) {
-    console.log(`  ERROR: only ${monitorIds.length} of ${pairs.length} transfer(s) started within ${appearWait}s (raise APPEAR_WAIT if the devices are slow to pick the run up)`);
-  }
-  console.log(`  run started: ${monitorIds.length} transfer(s) — ${monitorIds.join(', ')}`);
-  const failed = await waitAll(api, monitorIds);
-  return failed || missing > 0 ? 1 : 0;
-}
-
 // ================================================================== main
-const TRANSFER_TYPES = ['send_one', 'send_many', 'collect', 'sync'];
-const START_WHENS = ['now', 'schedule', 'repeat', 'after_previous', 'external'];
-
 async function main() {
-  const envPath = process.argv[2] || path.join(__dirname, '.env');
-  loadEnvFile(envPath);
+  loadEnvFile(process.argv[2] || path.join(__dirname, '.env'));
 
-  const transferType = env('TRANSFER_TYPE', 'send_one').toLowerCase();
-  if (!TRANSFER_TYPES.includes(transferType)) fail(`TRANSFER_TYPE must be ${TRANSFER_TYPES.join('|')}, got: ${transferType}`);
-  const isSync = transferType === 'sync';
-
-  const startWhen = env('START_WHEN', 'now').toLowerCase();
-  if (!isSync && !START_WHENS.includes(startWhen)) fail(`START_WHEN must be ${START_WHENS.join('|')}, got: ${startWhen}`);
-
-  const pairs = devicePairs(transferType);
+  const pairs = devicePairs();
   const isDir = envBool('SOURCE_IS_DIR', true);
-  const name = env('NAME') || `builder ${transferType} ${startWhen}`;
+  const name = env('NAME') || 'collect-matching-many-recurring';
   const { options, integrity } = fileOptions();
-  const processors = afterTransferProcessors();
 
   const api = await new Api().init();
   if (options[SAVEPATH_DEVICE_FLAG]) await loadDeviceNames(api);
-  console.log(`[${transferType} / ${isSync ? 'sync' : startWhen}]  ${pairs.length} device pair(s)`);
+  console.log(`[collect-matching-many-recurring]  ${pairs.length} device pair(s)`);
 
   try {
-    if (INTEGRATIONS.some(([t]) => envBool(t))) { console.log('integrations:'); await ensureIntegrations(api); }
-
-    if (!isSync && startWhen === 'now') {
-      console.log('transfer:');
-      process.exit(await runImmediateAutomation(api, name, pairs, options, integrity, isDir, processors));
-    }
-
-    const schedule = isSync ? null : buildSchedule(startWhen);
-    const body = automationBody(name, pairs, options, integrity, isDir, schedule, processors, isSync);
-
-    if (!isSync && startWhen === 'external') {
-      const code = ((await api.call('POST', '/api/command/generate-code')) || {}).code;
-      const apiKey = ((await api.call('GET', '/api/command/generate-api-key')) || {}).apiKey;
-      if (!code || !apiKey) fail('failed to issue command code / api key');
-      body.code = code; body.apiKey = apiKey;
-    }
+    const body = automationBody(name, pairs, options, integrity, isDir, buildSchedule());
 
     const automationId = (await api.call('POST', '/api/automations', body)).automationId;
     console.log(`automation created: ${automationId}`);
-
-    if (isSync) {
-      const direction = env('SYNC_DIRECTION', 'one_way').toLowerCase() === 'two_way' ? 'two-way' : 'one-way';
-      const watch = { file_created: 'on file create', file_modified: 'on file modify', both: 'on create and modify' }[env('SYNC_WATCH', 'file_created').toLowerCase()];
-      console.log(`  sync: ${direction}, ${watch}`);
-    } else if (startWhen === 'schedule') {
-      console.log(`  schedule: once at ${env('SCHEDULE_AT')}`);
-    } else if (startWhen === 'repeat') {
-      const s = { ...schedule }; delete s.startDate; delete s.startDateType;
-      console.log(`  repeat: every ${env('REPEAT_EVERY', 'day')} ${JSON.stringify(s)}`);
-    } else if (startWhen === 'after_previous') {
-      console.log(`  chained after automation: ${env('PREV_AUTOMATION_ID')} (flowId ${body.flowId})`);
-    } else if (startWhen === 'external') {
-      const triggerBase = (env('INNORIX_TRIGGER_BASE_URL', api.base)).replace(/\/+$/, '');
-      const url = `${triggerBase}/command/${body.code}`;
-      console.log(`  endpoint URL : ${url}`);
-      console.log(`  x-api-key    : ${body.apiKey}   (secret — anyone with it can start this transfer)`);
-      if (envBool('FIRE_TRIGGER')) {
-        const r = await api._fetch('POST', url, { 'x-api-key': body.apiKey });
-        console.log(`  trigger fired: ${r.status} ${(await r.text()).slice(0, 120)}`);
-      }
-    }
+    const s = { ...body.schedules[0] }; delete s.startDate; delete s.startDateType;
+    console.log(`  repeat: every ${env('REPEAT_EVERY', 'day')} ${JSON.stringify(s)}`);
   } catch (e) {
     if (e instanceof ApiError) fail(`API error ${e.status}: ${e.message}`);
     fail(String(e.message || e));
   }
 }
 
-if (require.main === module) main();
-
-// exported for tests only (does not affect CLI use)
-module.exports = { devicePairs, fileOptions, buildRepeatSchedule, buildSchedule, automationBody, automationDetail, plainPath, loadEnvFile };
+main();
