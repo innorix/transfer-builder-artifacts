@@ -94,32 +94,67 @@ Common settings include:
 
 | Setting | Purpose |
 |---|---|
-| `TRANSFER_TYPE` | Determines the transfer pattern: `send_one`, `send_many`, `collect`, or `sync`. |
-| `START_WHEN` | Determines when an operation starts: `now`, `schedule`, `repeat`, `after_previous`, or `external`. It is ignored for `TRANSFER_TYPE=sync`. |
 | `SOURCE_ID` / `SOURCE_PATH` | Identifies the source device and the path on that device. |
 | `TARGET_ID` / `TARGET_PATH` | Identifies the destination device and path. |
 | `INNORIX_WORKSPACE_ID` | Specifies the workspace used for API requests. |
 
 Replace placeholders such as `<deviceId>` and example paths with values from your INNORIX Platform environment. For `send_many` and `collect`, additional device lists may be required; consult `.env.builder.example` and the selected builder's README.
 
+### This Example's `.env` Settings
+
+Builder page: [send-one-after-transfer-follow-up](https://innorix.com/en/builder/send-one-after-transfer-follow-up) — one source device → one target device, runs when the automation `PREV_AUTOMATION_ID` finishes; follow-up actions run around the transfer.
+
+The transfer type and start condition are fixed in this example's code, so `TRANSFER_TYPE` and `START_WHEN` are not used. Set these keys in `.env`:
+
+| Key | Required | Value in `.env` | Description |
+| --- | --- | --- | --- |
+| `INNORIX_API_KEY` | ✔ (or token / login) | — | User API key, sent as `x-api-key` (or set `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`) |
+| `INNORIX_WORKSPACE_ID` |  | — | Workspace to act in |
+| `SOURCE_ID` | ✔ | `<deviceId>` | Source device ID |
+| `SOURCE_PATH` | ✔ | `/data/out` | Path on the source device |
+| `TARGET_ID` | ✔ | `<deviceId>` | Target device ID |
+| `TARGET_PATH` | ✔ | `/data/incoming` | Path on the target device |
+| `SOURCE_IS_DIR` |  | `true` | `false` when the source path is a single file |
+| `NAME` |  | `send-one-after-transfer-follow-up` | Automation name |
+| `PREV_AUTOMATION_ID` | ✔ | — | The automation this one runs after |
+| `FLOW_ID` |  | — | Workflow ID shared by the chain (blank = generated) |
+| `SCHEDULE_TZ` |  | `Asia/Seoul` | Timezone of the automation |
+| `SAVE_PATH` |  | `root` | `root` (no subfolder) · `date` (run-date subfolder) · `device` (subfolder per source device name) |
+| `DUPLICATE_ACTION` |  | `overwrite` | `overwrite` · `rename` · `skip` when the target has a file with the same name |
+| `INTEGRITY` |  | `true` | Verify each file after the transfer |
+| `NOTIFY_EVENTS` |  | `completed,error` | Events that fire Message / Virus Scan / Email / Monitoring |
+| `ON_MESSAGE` |  | `true` | Chat notification (workspace-wide integration) |
+| `MESSAGE_TYPE` | ✔ (when `ON_MESSAGE=true`) | `slack` | Provider: `slack`, `microsoft_teams`, `discord`, `telegram`, … |
+| `MESSAGE_NAME` |  | `builder-message-slack` | Integration name |
+| `MESSAGE_EVENTS` |  | `started,completed,error` | Events for the message only (blank = `NOTIFY_EVENTS`) |
+| `MESSAGE_CONFIG` | ✔ (when `ON_MESSAGE=true`) | `{"webhookUrl":"https://hooks.slack.com/services/XXX","channel":"#transfers"}` | Provider fields as JSON — Slack needs `webhookUrl` (and `channel`) |
+| `ON_VIRUS_SCAN` |  | `true` | Virus-scan integration (workspace-wide) |
+| `VIRUS_SCAN_TYPE` | ✔ (when `ON_VIRUS_SCAN=true`) | `microsoft_defender` | Provider — only `microsoft_defender` scans in the transfer pipeline |
+| `VIRUS_SCAN_NAME` |  | `builder-virus-scan-defender` | Integration name |
+| `VIRUS_SCAN_CONFIG` | ✔ (when `ON_VIRUS_SCAN=true`) | `{"scanTiming":"before_transfer_source","onDetection":"block_transfer","scanScope":"all"}` | JSON with `scanTiming`, `onDetection`, `scanScope` (all required) |
+| `ON_EMAIL` |  | `false` | Email integration (workspace-wide) |
+| `EMAIL_TYPE` |  | `ses` | `ses` · `sendgrid` · `email` |
+| `EMAIL_NAME` |  | `builder-email` | Integration name |
+| `EMAIL_CONFIG` |  | `{}` | Provider fields as JSON |
+| `ON_MONITORING` |  | `false` | Monitoring processor attached to this automation |
+| `MONITORING_TYPE` |  | `grafana` | `grafana` · `datadog` · `prometheus` · … |
+| `MONITORING_NAME` |  | `builder-grafana` | Integration name |
+| `MONITORING_CONFIG` |  | `{"baseUrl":"https://grafana.company.com","apiToken":"XXX"}` | Provider fields as JSON |
+| `ON_RUN_API` |  | `false` | Run API action attached to this automation |
+| `RUN_API_TYPE` |  | `http` | `http` (call a URL) · `command` (shell command) · `script` (script file) |
+| `RUN_API_URL` |  | `https://api.example.com/webhook` | URL to call (`RUN_API_TYPE=http`) |
+| `RUN_API_METHOD` |  | `POST` | HTTP method |
+| `RUN_API_BODY` |  | — | Optional JSON body |
+| `RUN_API_EVENTS` |  | `completed` | Transfer events that fire it (blank = every event) |
+| `RUN_API_DEVICE` |  | — | Which device runs it (blank = the transfer's device) |
+
+Every key, with comments: `.env.builder.example`.
+
 ### Understand Device Paths
 
 `SOURCE_PATH` and `TARGET_PATH` refer to paths on the configured source and destination devices, respectively. They do **not** necessarily refer to folders on the computer running this Node.js program.
 
 Confirm that the devices are registered, connected, and able to access the configured paths before starting a transfer.
-
-### Check the Execution Condition
-
-Review `START_WHEN` carefully before running the program:
-
-- `now`: creates the configured operation and starts it immediately. With `WAIT=true`, the program waits for the transfer result.
-- `schedule`: creates a one-time scheduled operation using `SCHEDULE_AT` and `SCHEDULE_TZ`.
-- `repeat`: creates a recurring operation using the `REPEAT_*` settings.
-- `after_previous`: links the operation to a previous automation using `PREV_AUTOMATION_ID`.
-- `external`: creates an externally triggered operation and prints a trigger URL and an associated `x-api-key`.
-- `sync`: creates a synchronization automation. `START_WHEN` is ignored; review `SYNC_DIRECTION` and `SYNC_WATCH` instead.
-
-Not every mode transfers files immediately. After running the program, check the message it prints and verify the operation in the INNORIX Platform.
 
 ### Review Integrations and File Options
 
@@ -210,7 +245,7 @@ The expected output depends on the example, its configuration, and the execution
 | The program cannot connect to the API | Check the base URL and network connection. If your environment requires an HTTP proxy, review the proxy instructions above. |
 | Authentication fails | Check the selected authentication method, API key or token, Workspace ID, and base URL. Do not paste real credentials into support messages. |
 | A device or path cannot be accessed | Confirm source and destination device IDs, device connectivity, paths, and agent access. Remember that paths belong to the configured devices. |
-| An immediate transfer does not start | Review `TRANSFER_TYPE`, `START_WHEN`, required device/path settings, and the operation status in the Platform. |
+| An immediate transfer does not start | Review the required device/path settings in `.env` and the operation status in the Platform. |
 | A scheduled or recurring operation does not run now | Check the configured time, timezone, recurrence settings, and automation status. Delayed execution may be expected. |
 | An integration is created but does not work | Check the provider type and required fields in the corresponding `*_CONFIG` value. |
 | The files transferred differ from expectations | Review file filters, source and destination paths, duplicate-file behavior, save-path settings, and integrity verification. |

@@ -63,31 +63,76 @@ Common settings include:
 |---|---|
 | `INNORIX_API_KEY` | Long-lived user API key used to authenticate API requests. |
 | `INNORIX_WORKSPACE_ID` | Workspace used for API requests. |
-| `TRANSFER_TYPE` | Transfer pattern, such as `send_one`, `send_many`, `collect`, or `sync`. |
-| `START_WHEN` | Execution condition: `now`, `schedule`, `repeat`, `after_previous`, or `external`. It is ignored for `TRANSFER_TYPE=sync`. |
 | `SOURCE_ID` / `SOURCE_PATH` | Source device ID and path on that device. |
 | `TARGET_ID` / `TARGET_PATH` | Destination device ID and path on that device. |
 
 The settings required depend on the transfer type. For example, sending to multiple devices may require a list of target device IDs, while collecting from multiple devices may require a list of source device IDs. See the selected builder's README and `.env.builder.example` for the complete settings reference.
+
+### This Example's `.env` Settings
+
+Builder page: [send-matching-one-recurring-follow-up](https://innorix.com/en/builder/send-matching-one-recurring-follow-up) — one source device → one target device, runs on a recurring schedule (`REPEAT_*`); only files that match the filter are sent; follow-up actions run around the transfer.
+
+The transfer type and start condition are fixed in this example's code, so `TRANSFER_TYPE` and `START_WHEN` are not used. Set these keys in `.env`:
+
+| Key | Required | Value in `.env` | Description |
+| --- | --- | --- | --- |
+| `INNORIX_API_KEY` | ✔ (or token / login) | — | User API key, sent as `x-api-key` (or set `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`) |
+| `INNORIX_WORKSPACE_ID` |  | — | Workspace to act in |
+| `SOURCE_ID` | ✔ | `<deviceId>` | Source device ID |
+| `SOURCE_PATH` | ✔ | `/data/out` | Path on the source device |
+| `TARGET_ID` | ✔ | `<deviceId>` | Target device ID |
+| `TARGET_PATH` | ✔ | `/data/incoming` | Path on the target device |
+| `SOURCE_IS_DIR` |  | `true` | `false` when the source path is a single file |
+| `NAME` |  | `send-matching-one-recurring-follow-up` | Automation name |
+| `REPEAT_EVERY` |  | `week` | `hour` · `day` · `week` · `month` |
+| `REPEAT_WEEKDAY` |  | `monday` | `week`: `sunday`…`saturday`, or a list `mon,wed,fri` |
+| `REPEAT_DAY_OF_MONTH` |  | `1` | `month`: `1`–`31`, or a list `1,15`; `last` = last day |
+| `REPEAT_HOUR` |  | `09` | Hour (day / week / month) |
+| `REPEAT_MINUTE` |  | `00` | Minute |
+| `REPEAT_AMPM` |  | `am` | `am` · `pm` |
+| `REPEAT_RUN_NOW` |  | `false` | `true` also runs once right away |
+| `REPEAT_START_AT` |  | — | Exact first-run time (ISO); overrides `REPEAT_RUN_NOW` |
+| `SCHEDULE_TZ` |  | `Asia/Seoul` | Timezone of the automation |
+| `FILTER_EXT` |  | `exe,msi,bat` | Extension list for the Type Filter |
+| `FILTER_MODE` |  | `deny` | `allow` = only these pass · `deny` = these are blocked |
+| `FILTER_MIN_MB` |  | — | Keep files at or above this size (MB) |
+| `FILTER_MAX_MB` |  | — | Keep files at or below this size (MB); if both are set, the minimum is used |
+| `SAVE_PATH` |  | `root` | `root` (no subfolder) · `date` (run-date subfolder) · `device` (subfolder per source device name) |
+| `DUPLICATE_ACTION` |  | `overwrite` | `overwrite` · `rename` · `skip` when the target has a file with the same name |
+| `INTEGRITY` |  | `true` | Verify each file after the transfer |
+| `NOTIFY_EVENTS` |  | `completed,error` | Events that fire Message / Virus Scan / Email / Monitoring |
+| `ON_MESSAGE` |  | `true` | Chat notification (workspace-wide integration) |
+| `MESSAGE_TYPE` | ✔ (when `ON_MESSAGE=true`) | `slack` | Provider: `slack`, `microsoft_teams`, `discord`, `telegram`, … |
+| `MESSAGE_NAME` |  | `builder-message-slack` | Integration name |
+| `MESSAGE_EVENTS` |  | `started,completed,error` | Events for the message only (blank = `NOTIFY_EVENTS`) |
+| `MESSAGE_CONFIG` | ✔ (when `ON_MESSAGE=true`) | `{"webhookUrl":"https://hooks.slack.com/services/XXX","channel":"#transfers"}` | Provider fields as JSON — Slack needs `webhookUrl` (and `channel`) |
+| `ON_VIRUS_SCAN` |  | `true` | Virus-scan integration (workspace-wide) |
+| `VIRUS_SCAN_TYPE` | ✔ (when `ON_VIRUS_SCAN=true`) | `microsoft_defender` | Provider — only `microsoft_defender` scans in the transfer pipeline |
+| `VIRUS_SCAN_NAME` |  | `builder-virus-scan-defender` | Integration name |
+| `VIRUS_SCAN_CONFIG` | ✔ (when `ON_VIRUS_SCAN=true`) | `{"scanTiming":"before_transfer_source","onDetection":"block_transfer","scanScope":"all"}` | JSON with `scanTiming`, `onDetection`, `scanScope` (all required) |
+| `ON_EMAIL` |  | `false` | Email integration (workspace-wide) |
+| `EMAIL_TYPE` |  | `ses` | `ses` · `sendgrid` · `email` |
+| `EMAIL_NAME` |  | `builder-email` | Integration name |
+| `EMAIL_CONFIG` |  | `{}` | Provider fields as JSON |
+| `ON_MONITORING` |  | `false` | Monitoring processor attached to this automation |
+| `MONITORING_TYPE` |  | `grafana` | `grafana` · `datadog` · `prometheus` · … |
+| `MONITORING_NAME` |  | `builder-grafana` | Integration name |
+| `MONITORING_CONFIG` |  | `{"baseUrl":"https://grafana.company.com","apiToken":"XXX"}` | Provider fields as JSON |
+| `ON_RUN_API` |  | `false` | Run API action attached to this automation |
+| `RUN_API_TYPE` |  | `http` | `http` (call a URL) · `command` (shell command) · `script` (script file) |
+| `RUN_API_URL` |  | `https://api.example.com/webhook` | URL to call (`RUN_API_TYPE=http`) |
+| `RUN_API_METHOD` |  | `POST` | HTTP method |
+| `RUN_API_BODY` |  | — | Optional JSON body |
+| `RUN_API_EVENTS` |  | `completed` | Transfer events that fire it (blank = every event) |
+| `RUN_API_DEVICE` |  | — | Which device runs it (blank = the transfer's device) |
+
+Every key, with comments: `.env.builder.example`.
 
 ### Understand Device Paths
 
 `SOURCE_PATH` and `TARGET_PATH` refer to paths on the configured source and destination devices. They do **not necessarily refer to folders on the computer running this Python program**.
 
 For example, `C:/data/out` is a path to be interpreted in the source device's environment, while `C:/incoming` is interpreted in the destination device's environment. Confirm that the paths exist and that the relevant devices and agents have the required access.
-
-### Check the Execution Condition Before Running
-
-Review `START_WHEN` carefully:
-
-- `now`: starts the configured operation immediately when the program runs.
-- `schedule`: creates a one-time scheduled operation.
-- `repeat`: configures a recurring operation.
-- `after_previous`: configures the operation to follow another automation.
-- `external`: configures an externally triggered operation and may display a trigger URL and key.
-- `TRANSFER_TYPE=sync`: configures synchronization; `START_WHEN` is ignored and the sync settings apply instead.
-
-Do not assume that every configuration starts transferring files immediately. The result depends on the selected execution condition.
 
 ### Review Optional Integrations and File Options
 
@@ -197,7 +242,7 @@ The expected output depends on the example, its configuration, and the execution
 | The configuration file cannot be found | Check that `.env` exists in the Python example directory, or provide a valid path to another `.env` file. |
 | Authentication fails | Check the selected authentication method, API key or token, Workspace ID, and base URL. Do not paste real credentials into support messages. |
 | A device or path cannot be accessed | Confirm source and destination device IDs, device connectivity, paths, and agent access. Remember that paths belong to the configured devices. |
-| An immediate transfer does not start | Review `TRANSFER_TYPE`, `START_WHEN`, required device/path settings, and the operation status in the Platform. |
+| An immediate transfer does not start | Review the required device/path settings in `.env` and the operation status in the Platform. |
 | A scheduled or recurring operation does not run now | Check the configured time, timezone, recurrence settings, and the automation status. Delayed execution may be expected. |
 | A timezone is unavailable when calculating a recurrence | The script may fall back to the computer's local time if the named timezone database is unavailable. Verify the runtime environment and schedule timezone. |
 | An integration is created but does not work | Check the provider type and required fields in the corresponding `*_CONFIG` value. |

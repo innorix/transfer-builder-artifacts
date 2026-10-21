@@ -77,32 +77,66 @@ Common settings include:
 
 | Setting | Purpose |
 |---|---|
-| `TRANSFER_TYPE` | Determines the transfer pattern: `send_one`, `send_many`, `collect`, or `sync`. |
-| `START_WHEN` | Determines when an operation starts: `now`, `schedule`, `repeat`, `after_previous`, or `external`. It is ignored for `TRANSFER_TYPE=sync`. |
 | `SOURCE_ID` / `SOURCE_PATH` | Identifies the source device and the path on that device. |
 | `TARGET_ID` / `TARGET_PATH` | Identifies the destination device and path. |
 | `INNORIX_WORKSPACE_ID` | Specifies the workspace used for API requests. |
 
 Replace placeholders such as `<deviceId>` and example paths with values from your INNORIX Platform environment. For `send_many` and `collect`, additional device lists may be required; consult `.env.builder.example` and the selected builder's README.
 
+### This Example's `.env` Settings
+
+Builder page: [send-one-on-request-follow-up](https://innorix.com/en/builder/send-one-on-request-follow-up) — one source device → one target device, runs when an external system calls the trigger URL the program prints; follow-up actions run around the transfer.
+
+The transfer type and start condition are fixed in this example's code, so `TRANSFER_TYPE` and `START_WHEN` are not used. Set these keys in `.env`:
+
+| Key | Required | Value in `.env` | Description |
+| --- | --- | --- | --- |
+| `INNORIX_API_KEY` | ✔ (or token / login) | — | User API key, sent as `x-api-key` (or set `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`) |
+| `INNORIX_WORKSPACE_ID` |  | — | Workspace to act in |
+| `SOURCE_ID` | ✔ | `<deviceId>` | Source device ID |
+| `SOURCE_PATH` | ✔ | `/data/out` | Path on the source device |
+| `TARGET_ID` | ✔ | `<deviceId>` | Target device ID |
+| `TARGET_PATH` | ✔ | `/data/incoming` | Path on the target device |
+| `SOURCE_IS_DIR` |  | `true` | `false` when the source path is a single file |
+| `NAME` |  | `send-one-on-request-follow-up` | Automation name |
+| `FIRE_TRIGGER` |  | `false` | `true` calls the trigger URL once right after creating it |
+| `SCHEDULE_TZ` |  | `Asia/Seoul` | Timezone of the automation |
+| `SAVE_PATH` |  | `root` | `root` (no subfolder) · `date` (run-date subfolder) · `device` (subfolder per source device name) |
+| `DUPLICATE_ACTION` |  | `overwrite` | `overwrite` · `rename` · `skip` when the target has a file with the same name |
+| `INTEGRITY` |  | `true` | Verify each file after the transfer |
+| `NOTIFY_EVENTS` |  | `completed,error` | Events that fire Message / Virus Scan / Email / Monitoring |
+| `ON_MESSAGE` |  | `true` | Chat notification (workspace-wide integration) |
+| `MESSAGE_TYPE` | ✔ (when `ON_MESSAGE=true`) | `slack` | Provider: `slack`, `microsoft_teams`, `discord`, `telegram`, … |
+| `MESSAGE_NAME` |  | `builder-message-slack` | Integration name |
+| `MESSAGE_EVENTS` |  | `started,completed,error` | Events for the message only (blank = `NOTIFY_EVENTS`) |
+| `MESSAGE_CONFIG` | ✔ (when `ON_MESSAGE=true`) | `{"webhookUrl":"https://hooks.slack.com/services/XXX","channel":"#transfers"}` | Provider fields as JSON — Slack needs `webhookUrl` (and `channel`) |
+| `ON_VIRUS_SCAN` |  | `true` | Virus-scan integration (workspace-wide) |
+| `VIRUS_SCAN_TYPE` | ✔ (when `ON_VIRUS_SCAN=true`) | `microsoft_defender` | Provider — only `microsoft_defender` scans in the transfer pipeline |
+| `VIRUS_SCAN_NAME` |  | `builder-virus-scan-defender` | Integration name |
+| `VIRUS_SCAN_CONFIG` | ✔ (when `ON_VIRUS_SCAN=true`) | `{"scanTiming":"before_transfer_source","onDetection":"block_transfer","scanScope":"all"}` | JSON with `scanTiming`, `onDetection`, `scanScope` (all required) |
+| `ON_EMAIL` |  | `false` | Email integration (workspace-wide) |
+| `EMAIL_TYPE` |  | `ses` | `ses` · `sendgrid` · `email` |
+| `EMAIL_NAME` |  | `builder-email` | Integration name |
+| `EMAIL_CONFIG` |  | `{}` | Provider fields as JSON |
+| `ON_MONITORING` |  | `false` | Monitoring processor attached to this automation |
+| `MONITORING_TYPE` |  | `grafana` | `grafana` · `datadog` · `prometheus` · … |
+| `MONITORING_NAME` |  | `builder-grafana` | Integration name |
+| `MONITORING_CONFIG` |  | `{"baseUrl":"https://grafana.company.com","apiToken":"XXX"}` | Provider fields as JSON |
+| `ON_RUN_API` |  | `false` | Run API action attached to this automation |
+| `RUN_API_TYPE` |  | `http` | `http` (call a URL) · `command` (shell command) · `script` (script file) |
+| `RUN_API_URL` |  | `https://api.example.com/webhook` | URL to call (`RUN_API_TYPE=http`) |
+| `RUN_API_METHOD` |  | `POST` | HTTP method |
+| `RUN_API_BODY` |  | — | Optional JSON body |
+| `RUN_API_EVENTS` |  | `completed` | Transfer events that fire it (blank = every event) |
+| `RUN_API_DEVICE` |  | — | Which device runs it (blank = the transfer's device) |
+
+Every key, with comments: `.env.builder.example`.
+
 ### Understand Device Paths
 
 `SOURCE_PATH` and `TARGET_PATH` refer to paths on the configured source and destination devices, respectively. They do **not** necessarily refer to folders on the computer running this Java program.
 
 Confirm that the devices are registered, connected, and able to access the configured paths before starting a transfer.
-
-### Check the Execution Condition
-
-Review `START_WHEN` carefully before running the program:
-
-- `now`: creates the configured operation and starts it immediately. With `WAIT=true`, the program waits for the transfer result.
-- `schedule`: creates a one-time scheduled operation using `SCHEDULE_AT` and `SCHEDULE_TZ`.
-- `repeat`: creates a recurring operation using the `REPEAT_*` settings.
-- `after_previous`: links the operation to a previous automation using `PREV_AUTOMATION_ID`.
-- `external`: creates an externally triggered operation and prints a trigger URL and an associated `x-api-key`.
-- `sync`: creates a synchronization automation. `START_WHEN` is ignored; review `SYNC_DIRECTION` and `SYNC_WATCH` instead.
-
-Not every mode transfers files immediately. After running the program, check the message it prints and verify the operation in the INNORIX Platform.
 
 ### Review Integrations and File Options
 
@@ -151,7 +185,7 @@ For more information, visit the [INNORIX Developer Center](https://innorix.com/e
 - Track `.env.builder.example` as the configuration template, not your populated `.env`.
 - Do not share API keys, access tokens, passwords, webhook URLs, or external-trigger credentials.
 - If `DEBUG=true`, the program prints request and response details. Review logs before sharing them, as response bodies or operational details may contain sensitive information.
-- For `START_WHEN=external`, treat the printed trigger `x-api-key` as a secret. Anyone who obtains it may be able to trigger the configured operation.
+- For examples started by an external request, treat the printed trigger `x-api-key` as a secret. Anyone who obtains it may be able to trigger the configured operation.
 
 ## 4. Run the Java Example
 
@@ -217,7 +251,7 @@ The expected result depends on the selected builder and the settings in `.env`.
 | The `.env` file is not found | Run the command from the Java example directory, check the file name, or provide the correct path as the first argument. |
 | Authentication fails | Check the selected authentication method, API key or token, and Workspace ID. |
 | The source or destination cannot be accessed | Verify device IDs, paths on the registered devices, and device connection status. |
-| No transfer starts | Review `TRANSFER_TYPE`, `START_WHEN`, required settings, and whether the selected mode waits for a schedule or an external trigger. |
+| No transfer starts | Review the required settings in `.env` and whether this example waits for a schedule or an external trigger. |
 | An integration is enabled but does not work | Check the provider type and its required fields in the corresponding `*_CONFIG` value. |
 | The transfer result is unexpected | Review file filters, save-path settings, duplicate-file handling, integrity options, and the operation status. |
 | A transfer takes too long | Check the destination device/agent connection and review `WAIT_TIMEOUT` and `APPEAR_WAIT` where applicable. |

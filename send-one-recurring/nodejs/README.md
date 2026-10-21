@@ -94,32 +94,48 @@ Common settings include:
 
 | Setting | Purpose |
 |---|---|
-| `TRANSFER_TYPE` | Determines the transfer pattern: `send_one`, `send_many`, `collect`, or `sync`. |
-| `START_WHEN` | Determines when an operation starts: `now`, `schedule`, `repeat`, `after_previous`, or `external`. It is ignored for `TRANSFER_TYPE=sync`. |
 | `SOURCE_ID` / `SOURCE_PATH` | Identifies the source device and the path on that device. |
 | `TARGET_ID` / `TARGET_PATH` | Identifies the destination device and path. |
 | `INNORIX_WORKSPACE_ID` | Specifies the workspace used for API requests. |
 
 Replace placeholders such as `<deviceId>` and example paths with values from your INNORIX Platform environment. For `send_many` and `collect`, additional device lists may be required; consult `.env.builder.example` and the selected builder's README.
 
+### This Example's `.env` Settings
+
+Builder page: [send-one-recurring](https://innorix.com/en/builder/send-one-recurring) — one source device → one target device, runs on a recurring schedule (`REPEAT_*`).
+
+The transfer type and start condition are fixed in this example's code, so `TRANSFER_TYPE` and `START_WHEN` are not used. Set these keys in `.env`:
+
+| Key | Required | Value in `.env` | Description |
+| --- | --- | --- | --- |
+| `INNORIX_API_KEY` | ✔ (or token / login) | — | User API key, sent as `x-api-key` (or set `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`) |
+| `INNORIX_WORKSPACE_ID` |  | — | Workspace to act in |
+| `SOURCE_ID` | ✔ | `<deviceId>` | Source device ID |
+| `SOURCE_PATH` | ✔ | `/data/out` | Path on the source device |
+| `TARGET_ID` | ✔ | `<deviceId>` | Target device ID |
+| `TARGET_PATH` | ✔ | `/data/incoming` | Path on the target device |
+| `SOURCE_IS_DIR` |  | `true` | `false` when the source path is a single file |
+| `NAME` |  | `send-one-recurring` | Automation name |
+| `REPEAT_EVERY` |  | `week` | `hour` · `day` · `week` · `month` |
+| `REPEAT_WEEKDAY` |  | `monday` | `week`: `sunday`…`saturday`, or a list `mon,wed,fri` |
+| `REPEAT_DAY_OF_MONTH` |  | `1` | `month`: `1`–`31`, or a list `1,15`; `last` = last day |
+| `REPEAT_HOUR` |  | `09` | Hour (day / week / month) |
+| `REPEAT_MINUTE` |  | `00` | Minute |
+| `REPEAT_AMPM` |  | `am` | `am` · `pm` |
+| `REPEAT_RUN_NOW` |  | `false` | `true` also runs once right away |
+| `REPEAT_START_AT` |  | — | Exact first-run time (ISO); overrides `REPEAT_RUN_NOW` |
+| `SCHEDULE_TZ` |  | `Asia/Seoul` | Timezone of the automation |
+| `SAVE_PATH` |  | `root` | `root` (no subfolder) · `date` (run-date subfolder) · `device` (subfolder per source device name) |
+| `DUPLICATE_ACTION` |  | `overwrite` | `overwrite` · `rename` · `skip` when the target has a file with the same name |
+| `INTEGRITY` |  | `true` | Verify each file after the transfer |
+
+Every key, with comments: `.env.builder.example`.
+
 ### Understand Device Paths
 
 `SOURCE_PATH` and `TARGET_PATH` refer to paths on the configured source and destination devices, respectively. They do **not** necessarily refer to folders on the computer running this Node.js program.
 
 Confirm that the devices are registered, connected, and able to access the configured paths before starting a transfer.
-
-### Check the Execution Condition
-
-Review `START_WHEN` carefully before running the program:
-
-- `now`: creates the configured operation and starts it immediately. With `WAIT=true`, the program waits for the transfer result.
-- `schedule`: creates a one-time scheduled operation using `SCHEDULE_AT` and `SCHEDULE_TZ`.
-- `repeat`: creates a recurring operation using the `REPEAT_*` settings.
-- `after_previous`: links the operation to a previous automation using `PREV_AUTOMATION_ID`.
-- `external`: creates an externally triggered operation and prints a trigger URL and an associated `x-api-key`.
-- `sync`: creates a synchronization automation. `START_WHEN` is ignored; review `SYNC_DIRECTION` and `SYNC_WATCH` instead.
-
-Not every mode transfers files immediately. After running the program, check the message it prints and verify the operation in the INNORIX Platform.
 
 ### Review Integrations and File Options
 
@@ -210,7 +226,7 @@ The expected output depends on the example, its configuration, and the execution
 | The program cannot connect to the API | Check the base URL and network connection. If your environment requires an HTTP proxy, review the proxy instructions above. |
 | Authentication fails | Check the selected authentication method, API key or token, Workspace ID, and base URL. Do not paste real credentials into support messages. |
 | A device or path cannot be accessed | Confirm source and destination device IDs, device connectivity, paths, and agent access. Remember that paths belong to the configured devices. |
-| An immediate transfer does not start | Review `TRANSFER_TYPE`, `START_WHEN`, required device/path settings, and the operation status in the Platform. |
+| An immediate transfer does not start | Review the required device/path settings in `.env` and the operation status in the Platform. |
 | A scheduled or recurring operation does not run now | Check the configured time, timezone, recurrence settings, and automation status. Delayed execution may be expected. |
 | An integration is created but does not work | Check the provider type and required fields in the corresponding `*_CONFIG` value. |
 | The files transferred differ from expectations | Review file filters, source and destination paths, duplicate-file behavior, save-path settings, and integrity verification. |

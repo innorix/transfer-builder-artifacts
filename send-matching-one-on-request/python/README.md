@@ -63,31 +63,44 @@ Common settings include:
 |---|---|
 | `INNORIX_API_KEY` | Long-lived user API key used to authenticate API requests. |
 | `INNORIX_WORKSPACE_ID` | Workspace used for API requests. |
-| `TRANSFER_TYPE` | Transfer pattern, such as `send_one`, `send_many`, `collect`, or `sync`. |
-| `START_WHEN` | Execution condition: `now`, `schedule`, `repeat`, `after_previous`, or `external`. It is ignored for `TRANSFER_TYPE=sync`. |
 | `SOURCE_ID` / `SOURCE_PATH` | Source device ID and path on that device. |
 | `TARGET_ID` / `TARGET_PATH` | Destination device ID and path on that device. |
 
 The settings required depend on the transfer type. For example, sending to multiple devices may require a list of target device IDs, while collecting from multiple devices may require a list of source device IDs. See the selected builder's README and `.env.builder.example` for the complete settings reference.
+
+### This Example's `.env` Settings
+
+Builder page: [send-matching-one-on-request](https://innorix.com/en/builder/send-matching-one-on-request) — one source device → one target device, runs when an external system calls the trigger URL the program prints; only files that match the filter are sent.
+
+The transfer type and start condition are fixed in this example's code, so `TRANSFER_TYPE` and `START_WHEN` are not used. Set these keys in `.env`:
+
+| Key | Required | Value in `.env` | Description |
+| --- | --- | --- | --- |
+| `INNORIX_API_KEY` | ✔ (or token / login) | — | User API key, sent as `x-api-key` (or set `INNORIX_ACCESS_TOKEN`, or `INNORIX_EMAIL` + `INNORIX_PASSWORD`) |
+| `INNORIX_WORKSPACE_ID` |  | — | Workspace to act in |
+| `SOURCE_ID` | ✔ | `<deviceId>` | Source device ID |
+| `SOURCE_PATH` | ✔ | `/data/out` | Path on the source device |
+| `TARGET_ID` | ✔ | `<deviceId>` | Target device ID |
+| `TARGET_PATH` | ✔ | `/data/incoming` | Path on the target device |
+| `SOURCE_IS_DIR` |  | `true` | `false` when the source path is a single file |
+| `NAME` |  | `send-matching-one-on-request` | Automation name |
+| `FIRE_TRIGGER` |  | `false` | `true` calls the trigger URL once right after creating it |
+| `SCHEDULE_TZ` |  | `Asia/Seoul` | Timezone of the automation |
+| `FILTER_EXT` |  | `exe,msi,bat` | Extension list for the Type Filter |
+| `FILTER_MODE` |  | `deny` | `allow` = only these pass · `deny` = these are blocked |
+| `FILTER_MIN_MB` |  | — | Keep files at or above this size (MB) |
+| `FILTER_MAX_MB` |  | — | Keep files at or below this size (MB); if both are set, the minimum is used |
+| `SAVE_PATH` |  | `root` | `root` (no subfolder) · `date` (run-date subfolder) · `device` (subfolder per source device name) |
+| `DUPLICATE_ACTION` |  | `overwrite` | `overwrite` · `rename` · `skip` when the target has a file with the same name |
+| `INTEGRITY` |  | `true` | Verify each file after the transfer |
+
+Every key, with comments: `.env.builder.example`.
 
 ### Understand Device Paths
 
 `SOURCE_PATH` and `TARGET_PATH` refer to paths on the configured source and destination devices. They do **not necessarily refer to folders on the computer running this Python program**.
 
 For example, `C:/data/out` is a path to be interpreted in the source device's environment, while `C:/incoming` is interpreted in the destination device's environment. Confirm that the paths exist and that the relevant devices and agents have the required access.
-
-### Check the Execution Condition Before Running
-
-Review `START_WHEN` carefully:
-
-- `now`: starts the configured operation immediately when the program runs.
-- `schedule`: creates a one-time scheduled operation.
-- `repeat`: configures a recurring operation.
-- `after_previous`: configures the operation to follow another automation.
-- `external`: configures an externally triggered operation and may display a trigger URL and key.
-- `TRANSFER_TYPE=sync`: configures synchronization; `START_WHEN` is ignored and the sync settings apply instead.
-
-Do not assume that every configuration starts transferring files immediately. The result depends on the selected execution condition.
 
 ### Review Optional Integrations and File Options
 
@@ -197,7 +210,7 @@ The expected output depends on the example, its configuration, and the execution
 | The configuration file cannot be found | Check that `.env` exists in the Python example directory, or provide a valid path to another `.env` file. |
 | Authentication fails | Check the selected authentication method, API key or token, Workspace ID, and base URL. Do not paste real credentials into support messages. |
 | A device or path cannot be accessed | Confirm source and destination device IDs, device connectivity, paths, and agent access. Remember that paths belong to the configured devices. |
-| An immediate transfer does not start | Review `TRANSFER_TYPE`, `START_WHEN`, required device/path settings, and the operation status in the Platform. |
+| An immediate transfer does not start | Review the required device/path settings in `.env` and the operation status in the Platform. |
 | A scheduled or recurring operation does not run now | Check the configured time, timezone, recurrence settings, and the automation status. Delayed execution may be expected. |
 | A timezone is unavailable when calculating a recurrence | The script may fall back to the computer's local time if the named timezone database is unavailable. Verify the runtime environment and schedule timezone. |
 | An integration is created but does not work | Check the provider type and required fields in the corresponding `*_CONFIG` value. |
